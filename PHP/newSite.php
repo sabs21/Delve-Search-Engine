@@ -12,7 +12,7 @@ $begin = round(microtime(true) * 1000);
 set_time_limit(120);
 
 // Override PHP.ini so that errors do not display on browser.
-ini_set('display_errors', 0);
+//ini_set('display_errors', 0);
 
 ////////////////////////
 // CLASS DEFINITIONS //
@@ -21,12 +21,14 @@ ini_set('display_errors', 0);
 class Page {
   protected $keywords;
   protected $path;
+  protected $id;
 
   // $keywords is an array of objects.
   // $path is a string
   public function __construct($keywords, $path) {
     $this->keywords = $keywords;
     $this->path = $path;
+    $this->id = null;
   }
 
   public function get_keywords() {
@@ -35,6 +37,14 @@ class Page {
 
   public function get_path() {
     return $this->path;
+  }
+
+  public function get_id() {
+    return $this->id;
+  }
+
+  public function set_id($new_id) {
+    $this->id = $new_id;
   }
 }
 
@@ -172,7 +182,7 @@ $rawCreds = file_get_contents("../credentials.json");
 $creds = json_decode($rawCreds);
 
 $username = $creds->username;
-$password = $creds->passwords;
+$password = $creds->password;
 $serverIp = $creds->server_ip;
 $dbname = $creds->database_name;
 $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
@@ -181,7 +191,7 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
   // Create a PDO object to prevent against SQL injection attacks
   try {
     $pdo = new PDO($dsn, $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    //$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
   } catch (PDOException $e) {
     //echo 'Connection failed: ' . $e->getMessage();
     $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
@@ -222,7 +232,56 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
       // Log the success of the mass insertion of pages
       $response['inserted_into_pages'] = true;
 
+      // Calculate and store all page ID's of recently inserted pages
+      $firstPageId = $pdo->lastInsertId(); // PHP and mySQL is odd in that lastInsertId actually returns the first inserted id.
+      $lastPageId = $firstPageId + ($totalPages - 1);
+      for ($i = $firstPageId, $j = 0; $i <= $lastPageId; $i++, $j++) { // Count up from the first page added to the last page added. Assumes no interruptions inbetween entries.
+        $pages[$j]->set_id($i);
+      }
+
+      // Get the total number of keywords acquired.
+      $totalKeywords = 0;
+      for ($i = 0; $i < $totalPages; $i++) {
+        $totalKeywords += count($pages[$i]->get_keywords());
+      }
+      echo "total keywords: " . $totalKeywords;
+
+      // Add keywords for each page into database
+      $placeholder_str = create_pdo_placeholder_str(3, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
+      echo $placeholder_str;
+      $sql = 'INSERT INTO keywords (page_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+      $statement = $pdo->prepare($sql);
+      $placeholder = 1;
+      for ($i = 0; $i < $totalPages; $i++) {
+        $page_keywords = $pages[$i]->get_keywords();
+        $page_id = $pages[$i]->get_id();
+        for ($j = 0; $j < count($page_keywords); $j++) {
+          $statement->bindValue($placeholder, $page_id, PDO::PARAM_INT);
+          $statement->bindValue($placeholder+1, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
+          $statement->bindValue($placeholder+2, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
+          $placeholder += 3;
+          //$counter += 1;
+        }
+      }
+      $statement->execute();
+
+      //echo "count: " . $counter;
+
+      //$sql = 'SELECT path FROM pages WHERE site_id LIKE ' . $site_id;
+      //$statement = $pdo->query($sql);
+      //while ($row = $statement->fetch()) {
+
+      //}
+      //$statement->bindValue($j, $sql_res[0], PDO::PARAM_INT);
+      //$statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
+
       $pdo->commit();
+
+      echo "first page id: " . $firstPageId . "\n";
+      echo "last page id: " . $lastPageId;
+      //echo "<pre>";
+      echo print_r($pages);
+      //echo "</pre>";
     } catch (Exception $e) {
       // One of our database queries have failed.
       // Print out the error message.
