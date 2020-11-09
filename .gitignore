@@ -1,0 +1,2 @@
+# For security, do not include credentials in git repo
+credentials.json
