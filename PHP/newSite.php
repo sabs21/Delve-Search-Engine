@@ -146,11 +146,14 @@ if (!is_null($base_url) && !empty($base_url)) {
     @ $dom->loadHTML($html); // @ surpresses any warnings
 
     // Grab all headers to be used in finding all keywords
-    $title_keywords = get_keywords_from_tag($dom, 'title');
+    /*$title_keywords = get_keywords_from_tag($dom, 'title');
     $h1_keywords = get_keywords_from_tag($dom, 'h1');
     $h2_keywords = get_keywords_from_tag($dom, 'h2');
     $h3_keywords = get_keywords_from_tag($dom, 'h3');
-    $h4_keywords = get_keywords_from_tag($dom, 'h4');
+    $h4_keywords = get_keywords_from_tag($dom, 'h4');*/
+
+    // echo print_r(get_keywords_from_all($dom));
+    $keywords = get_keywords_from_all($dom);
 
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
     $keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
@@ -304,6 +307,7 @@ echo json_encode($response);
 // Given an html tag, this function grabs all text within those tags.
 function get_keywords_from_tag($dom, $tag) {
   $punctuations = [',', '.', '[', ']', '{', '}', '\'', '"', '(', ')', '\n'];
+  $excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
   $all_keywords = [];
   $tag_arr = $dom->getElementsByTagName($tag);
   foreach($tag_arr as $tag) {
@@ -314,7 +318,58 @@ function get_keywords_from_tag($dom, $tag) {
     // Separate each word and place inside of a keyword array.
     $tag_keywords = explode(' ', $tag_text);
     foreach($tag_keywords as $keyword) {
-      $all_keywords[] = $keyword;
+      $isValid = true;
+      foreach($excludes as $exclude) {
+        if($exclude == $keyword) 
+        {
+          $isValid = false;
+          break;
+        }
+      }
+      if ($isValid) {
+        $all_keywords[] = $keyword;
+      }
+    }
+  }
+  return $all_keywords;
+}
+
+// Input: DOMDocument Object
+// Output: Keywords
+// Takes the DOMDocument Object and finds all instances of duda paragraph elements.
+// This essentially combs all the content within the page for keywords.
+function get_keywords_from_all($dom) {
+  $punctuations = [',', '.', '[', ']', '{', '}', '\'', '"', '(', ')', '\n'];
+  $excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
+  $xpath = new DOMXpath($dom);
+  $content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
+  $all_keywords = [];
+
+  foreach ($content_blocks as $block) {
+    // Get the text content and seperate each (formatted) word into an array
+    $content = $block->nodeValue;
+    $content = str_replace($punctuations, ' ', $content);
+    $content = strtolower($content);
+    $content_keywords = explode(' ', $content);
+    // Ensure each keyword is longer than 1 character and is not a word from the excludes array
+    foreach ($content_keywords as $keyword) {
+      $isValid = true;
+      $keyword = trim(preg_replace('/[^A-z]+/', '', $keyword));
+      if (isset($keyword[1])) {
+        foreach($excludes as $exclude) {
+          if ($exclude == $keyword) {
+            $isValid = false;
+            break;
+          }
+        }
+      }
+      else {
+        $isValid = false;
+      }
+
+      if ($isValid) {
+        $all_keywords[] = $keyword;
+      }
     }
   }
   return $all_keywords;
