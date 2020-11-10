@@ -12,7 +12,7 @@ $begin = round(microtime(true) * 1000);
 set_time_limit(120);
 
 // Override PHP.ini so that errors do not display on browser.
-//ini_set('display_errors', 0);
+ini_set('display_errors', 0);
 
 ////////////////////////
 // CLASS DEFINITIONS //
@@ -134,8 +134,8 @@ $base_url = $urls[0];
 // Ensure that the base_url is not null so that each path to be inserted into the database is not formatted as a url.
 if (!is_null($base_url) && !empty($base_url)) {
   // Loop through and crawl each page to grab content.
-  //foreach ($urls as $url) {
-  for ($i = 0; $i < 3; $i++) {
+  foreach ($urls as $url) {
+  //for ($i = 0; $i < 3; $i++) {
     // Begin cURL session
     //$curl_session = curl_init();
     //curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, true); // Prevent curl_exec from echoing output.
@@ -150,15 +150,16 @@ if (!is_null($base_url) && !empty($base_url)) {
     $h1_keywords = get_keywords_from_tag($dom, 'h1');
     $h2_keywords = get_keywords_from_tag($dom, 'h2');
     $h3_keywords = get_keywords_from_tag($dom, 'h3');
+    $h4_keywords = get_keywords_from_tag($dom, 'h4');
 
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
-    $keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords);
+    $keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
     $keywords = remove_empty_entries($keywords);
     sort($keywords, SORT_STRING);
     $keywords = array_unique_monitor_dupes($keywords);
 
     // Create a new instance of Page and add it to the pages array
-    $path = str_replace($base_url, '/', $urls[$i]);
+    $path = str_replace($base_url, '/', $url);
     $page = new Page($keywords, $path);
     $pages[] = $page;
   }
@@ -191,7 +192,7 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
   // Create a PDO object to prevent against SQL injection attacks
   try {
     $pdo = new PDO($dsn, $username, $password);
-    //$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
   } catch (PDOException $e) {
     //echo 'Connection failed: ' . $e->getMessage();
     $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
@@ -244,11 +245,10 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
       for ($i = 0; $i < $totalPages; $i++) {
         $totalKeywords += count($pages[$i]->get_keywords());
       }
-      echo "total keywords: " . $totalKeywords;
+      //echo "total keywords: " . $totalKeywords;
 
       // Add keywords for each page into database
       $placeholder_str = create_pdo_placeholder_str(3, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-      echo $placeholder_str;
       $sql = 'INSERT INTO keywords (page_id, keyword, dupe_count) VALUES ' . $placeholder_str;
       $statement = $pdo->prepare($sql);
       $placeholder = 1;
@@ -260,27 +260,19 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
           $statement->bindValue($placeholder+1, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
           $statement->bindValue($placeholder+2, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
           $placeholder += 3;
-          //$counter += 1;
         }
       }
       $statement->execute();
 
-      //echo "count: " . $counter;
-
-      //$sql = 'SELECT path FROM pages WHERE site_id LIKE ' . $site_id;
-      //$statement = $pdo->query($sql);
-      //while ($row = $statement->fetch()) {
-
-      //}
-      //$statement->bindValue($j, $sql_res[0], PDO::PARAM_INT);
-      //$statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
+      // Indicate that the keywords were inserted into the database successfully
+      $response['inserted_into_keywords'] = true;
 
       $pdo->commit();
 
-      echo "first page id: " . $firstPageId . "\n";
-      echo "last page id: " . $lastPageId;
+      //echo "first page id: " . $firstPageId . "\n";
+      //echo "last page id: " . $lastPageId;
       //echo "<pre>";
-      echo print_r($pages);
+      //echo print_r($pages);
       //echo "</pre>";
     } catch (Exception $e) {
       // One of our database queries have failed.
