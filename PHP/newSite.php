@@ -145,6 +145,12 @@ if (!is_null($base_url) && !empty($base_url)) {
     $dom = new DOMDocument(); // Create a new DOMDocument object which will be used for parsing through the html
     @ $dom->loadHTML($html); // @ surpresses any warnings
 
+    // Remove the header and the footer since their contents will just bloat the database.
+    $header = $dom->getElementById('hcontainer');
+    $header->parentNode->removeChild($header);
+    $footer = $dom->getElementById('fcontainer');
+    $footer->parentNode->removeChild($footer);
+
     // Grab all headers to be used in finding all keywords
     /*$title_keywords = get_keywords_from_tag($dom, 'title');
     $h1_keywords = get_keywords_from_tag($dom, 'h1');
@@ -336,7 +342,7 @@ function get_keywords_from_tag($dom, $tag) {
 // Takes the DOMDocument Object and finds all instances of duda paragraph elements.
 // This essentially combs all the content within the page for keywords.
 function get_keywords_from_all($dom) {
-  $excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be', 'it']; // Don't consider these as keywords
+  $excludes = ['an', 'as', 'by', 'the', 'and', 'i', 'was', 'a', 'to', 'like', 'we', 'us', 'in', 'our', 'of', 'for', 'from', 'that', 'they', 'on', 'this', 'can', 'so', 'be', 'it', 'its', 'is', 'if', 'or', 'at', 'you', 'your', 'are', 'when', 'with', 'will']; // Don't consider these as keywords
   // Use DOMXpath to grab content from each element with the data-element-type="paragraph" attribute.
   $xpath = new DOMXpath($dom);
   $content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
@@ -345,7 +351,8 @@ function get_keywords_from_all($dom) {
   foreach ($content_blocks as $block) {
     // Get the text content and seperate each (formatted) word into an array
     $content = " " . $block->nodeValue; // Adding the space at the start prevents blocks of content from 'sticking' together
-    $content = sanitize($content);
+    $options = ['symbols' => true, 'lower' => false, 'upper' => true]; // Options for the sanitize function
+    $content = sanitize($content, $options);
     $content_keywords = explode(' ', $content);
     // Ensure each keyword is longer than 1 character and is not a word from the excludes array
     foreach ($content_keywords as $keyword) {
@@ -370,12 +377,67 @@ function get_keywords_from_all($dom) {
   return $all_keywords;
 }
 
+// WIP, I just copied and renamed the get_keywords_from_tag function.
+function get_content_from_tag($dom, $tag) {
+  //$punctuations = [',', '.', '[', ']', '{', '}', '\'', '"', '(', ')', '\n'];
+  //$excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
+  $all_keywords = [];
+  $tag_arr = $dom->getElementsByTagName($tag);
+  foreach($tag_arr as $tag) {
+    // Get and format the text
+    $tag_text = $tag->textContent;
+    $tag_text = str_replace($punctuations, ' ', $tag_text);
+    $tag_text = strtolower($tag_text);
+    // Separate each word and place inside of a keyword array.
+    $tag_keywords = explode(' ', $tag_text);
+    foreach($tag_keywords as $keyword) {
+      $isValid = true;
+      foreach($excludes as $exclude) {
+        if($exclude == $keyword) 
+        {
+          $isValid = false;
+          break;
+        }
+      }
+      if ($isValid) {
+        $all_keywords[] = $keyword;
+      }
+    }
+  }
+  return $all_keywords;
+}
+
 // Input: String
 // Output: String containing only letters and numbers (ASCII)
+// Options: [ 'symbols' => bool, 'lower' => bool, 'upper' => bool]. True indicates to remove.
 // Removes unknown and unwanted symbols from a given string.
-function sanitize($str) {
+function sanitize($str, $options = ['symbols' => false, 'lower' => false, 'upper' => false]) {
+  $symbols_reg = '\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E';
+  $lower_reg = '\x61-\x7A';
+  //echo $lower_reg;
+  $upper_reg = '\x41-\x5A';
+  $regexp = '/[\x00-\x1F';
+
+  /*if ($options['symbols'] && $options['upper'] && $options['lower']) {
+    $regexp = '/[\x00-\x1F\x80-\xFF]/'
+  }*/
+
+  if ($options['symbols']) {
+    $regexp .= $symbols_reg;
+  }
+  if ($options['lower']) {
+    $regexp .= $lower_reg;
+  }
+  if ($options['upper']) {
+    $regexp .= $upper_reg;
+  }
+
+  $regexp .= '\x80-\xFF]/';
+
   $str = strtolower($str);
-  return preg_replace('/[\x00-\x1F\x21-\x2F\x3A-\x60\x7B-\x7E\x80-\xFF]/', '', $str); // Remove unwanted characters based on hex codes from ascii table, keeping letters and digits.
+  //echo '/[\x00-\x1F\x21-\x2F\x3A-\x60\x7B-\x7E\x80-\xFF]/';
+  //echo $regexp . "\n";
+  return preg_replace($regexp, '', $str); // Remove unwanted characters based on the values in the options array.
 }
 
 // Input: Any array
