@@ -140,7 +140,7 @@ if (!is_null($base_url) && !empty($base_url)) {
     //$curl_session = curl_init();
     //curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, true); // Prevent curl_exec from echoing output.
     //curl_setopt($curl_session, CURLOPT_USERAGENT, $agent);
-    curl_setopt($curl_session, CURLOPT_URL, $base_url);
+    curl_setopt($curl_session, CURLOPT_URL, $url);
     $html = curl_exec($curl_session);
     $dom = new DOMDocument(); // Create a new DOMDocument object which will be used for parsing through the html
     @ $dom->loadHTML($html); // @ surpresses any warnings
@@ -152,11 +152,12 @@ if (!is_null($base_url) && !empty($base_url)) {
     $h3_keywords = get_keywords_from_tag($dom, 'h3');
     $h4_keywords = get_keywords_from_tag($dom, 'h4');*/
 
-    // echo print_r(get_keywords_from_all($dom));
+    // Grab all content to extract all keywords
     $keywords = get_keywords_from_all($dom);
+    //echo print_r($keywords);
 
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
-    $keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
+    //$keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
     $keywords = remove_empty_entries($keywords);
     sort($keywords, SORT_STRING);
     $keywords = array_unique_monitor_dupes($keywords);
@@ -213,7 +214,6 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
       $response['inserted_into_sites'] = true;
 
       // Grab relevant site_id from recent call
-      //$pdo->beginTransaction();
       $sql = 'SELECT site_id FROM sites WHERE url = ?';
       $statement = $pdo->prepare($sql);
       $statement->execute([$urls[0]]);
@@ -248,7 +248,6 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
       for ($i = 0; $i < $totalPages; $i++) {
         $totalKeywords += count($pages[$i]->get_keywords());
       }
-      //echo "total keywords: " . $totalKeywords;
 
       // Add keywords for each page into database
       $placeholder_str = create_pdo_placeholder_str(3, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
@@ -291,8 +290,6 @@ if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
 $response['time_taken'] = $end - $begin;
-//$time_taken = $end - $begin;
-//echo "Time taken to execute: " . $timeTaken;
 
 // Send a response back to the client.
 echo json_encode($response);
@@ -339,27 +336,25 @@ function get_keywords_from_tag($dom, $tag) {
 // Takes the DOMDocument Object and finds all instances of duda paragraph elements.
 // This essentially combs all the content within the page for keywords.
 function get_keywords_from_all($dom) {
-  $punctuations = [',', '.', '[', ']', '{', '}', '\'', '"', '(', ')', '\n'];
-  $excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
+  $excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be', 'it']; // Don't consider these as keywords
+  // Use DOMXpath to grab content from each element with the data-element-type="paragraph" attribute.
   $xpath = new DOMXpath($dom);
   $content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
   $all_keywords = [];
 
   foreach ($content_blocks as $block) {
     // Get the text content and seperate each (formatted) word into an array
-    $content = $block->nodeValue;
-    $content = str_replace($punctuations, ' ', $content);
-    $content = strtolower($content);
+    $content = " " . $block->nodeValue; // Adding the space at the start prevents blocks of content from 'sticking' together
+    $content = sanitize($content);
     $content_keywords = explode(' ', $content);
     // Ensure each keyword is longer than 1 character and is not a word from the excludes array
     foreach ($content_keywords as $keyword) {
       $isValid = true;
-      $keyword = trim(preg_replace('/[^A-z]+/', '', $keyword));
-      if (isset($keyword[1])) {
+      if (isset($keyword[1])) { // If the word is longer than 1 letter, then it can be considered a keyword.
         foreach($excludes as $exclude) {
           if ($exclude == $keyword) {
             $isValid = false;
-            break;
+            continue;
           }
         }
       }
@@ -373,6 +368,14 @@ function get_keywords_from_all($dom) {
     }
   }
   return $all_keywords;
+}
+
+// Input: String
+// Output: String containing only letters and numbers (ASCII)
+// Removes unknown and unwanted symbols from a given string.
+function sanitize($str) {
+  $str = strtolower($str);
+  return preg_replace('/[\x00-\x1F\x21-\x2F\x3A-\x60\x7B-\x7E\x80-\xFF]/', '', $str); // Remove unwanted characters based on hex codes from ascii table, keeping letters and digits.
 }
 
 // Input: Any array
