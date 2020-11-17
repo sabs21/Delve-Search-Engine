@@ -79,6 +79,6 @@ async function crawlSite(urlToCrawl) {
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());
-  //return response.text();
-  return response.json();
+  return response.text();
+  //return response.json();
 }
