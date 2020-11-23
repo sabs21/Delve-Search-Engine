@@ -5,7 +5,25 @@ window.addEventListener("DOMContentLoaded", function() {
   newPageBtn.addEventListener("click", (e) => {
     console.log(input.value);
     if (input.value !== "") {
-      crawlSite(input.value)
+      crawl(input.value)
+      .then(res => {
+        console.log(res);
+        console.log(res.data);
+      })
+      .catch(err => {
+        console.log("ERROR: ", err);
+      });
+    }
+  });
+
+  let searchBar = document.getElementById("searchBar");
+  let searchButton = document.getElementById("searchButton");
+
+  searchButton.addEventListener("click", (e) => {
+    console.log(searchBar.value);
+
+    if (searchBar.value !== "") {
+      search(searchBar.value, "https://www.armorshieldroof.com/")
       .then(res => {
         console.log(res);
         console.log(res.data);
@@ -59,8 +77,8 @@ window.addEventListener("DOMContentLoaded", function() {
 //        data = { sitemap: "https://www.superiorcleaning.solutions/sitemap.xml" }
 // Output: Response in json format
 // Send the sitemap url to the php script that will fill the database accordingly
-async function crawlSite(urlToCrawl) {
-  let phpUrl = "http://localhost/dudaSearch/PHP/newSite.php";
+async function crawl(urlToCrawl) {
+  let phpUrl = "http://localhost/dudaSearch/PHP/crawl.php";
   let sitemapUrl = urlToCrawl + "/sitemap.xml";
   // Default options are marked with *
   const response = await fetch(phpUrl, {
@@ -76,6 +94,34 @@ async function crawlSite(urlToCrawl) {
     referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
     body: JSON.stringify({
       sitemap: sitemapUrl
+    }) // body data type must match "Content-Type" header
+  });
+  //console.log(response.text());
+  return response.text();
+  //return response.json();
+}
+
+// Input: Phrase is the search phrase that the user types.
+//        baseUrl is used to generate the sitemap url.
+// Output: Response in json format.
+// Search the database for all pages related to your search phrase.
+async function search(phrase, baseUrl) {
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+  // Default options are marked with *
+  const response = await fetch(phpUrl, {
+    method: 'POST', // *GET, POST, PUT, DELETE, etc.
+    mode: 'cors', // no-cors, *cors, same-origin
+    cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+    credentials: 'same-origin', // include, *same-origin, omit
+    headers: {
+      'Content-Type': 'application/json'
+      // 'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    redirect: 'follow', // manual, *follow, error
+    referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+    body: JSON.stringify({
+      url: baseUrl,
+      phrase: phrase
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());

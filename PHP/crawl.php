@@ -18,25 +18,57 @@ ini_set('display_errors', 0);
 // CLASS DEFINITIONS //
 //////////////////////
 
+class Content {
+  protected $content;
+  protected $page_id;
+
+  public function __construct($page_id, $content) {
+    $this->page_id = $page_id;
+    $this->content = $content;
+  }
+
+  public function get_content() {
+    return $this->content;
+  }
+
+  public function set_content($new_content) {
+    $this->content = $new_content;
+  }
+
+  public function get_page_id() {
+    return $this->page_id;
+  }
+
+  public function set_page_id($new_id) {
+    $this->page_id = $new_id;
+  }
+}
+
 class Page {
   protected $keywords;
   protected $path;
   protected $id;
+  protected $content;
 
   // $keywords is an array of objects.
   // $path is a string
-  public function __construct($keywords, $path) {
-    $this->keywords = $keywords;
+  public function __construct($path, $content, $keywords) {
     $this->path = $path;
+    $this->content = $content;
+    $this->keywords = $keywords;
     $this->id = null;
-  }
-
-  public function get_keywords() {
-    return $this->keywords;
   }
 
   public function get_path() {
     return $this->path;
+  }
+
+  public function get_content() {
+    return $this->content;
+  }
+
+  public function get_keywords() {
+    return $this->keywords;
   }
 
   public function get_id() {
@@ -88,6 +120,7 @@ $response = [
   'found_site_id' => false,
   'inserted_into_pages' => false,
   'inserted_into_keywords' => false,
+  'inserted_into_contents' => false,
   'curl_error' => NULL,
   'pdo_error' => NULL,
   'db_error' => NULL,
@@ -162,6 +195,7 @@ if (!is_null($base_url) && !empty($base_url)) {
     // Grab all content to extract all keywords
     $keywords = get_keywords_from_all($dom);
     //$response['misc'] = get_all_content($dom);
+    $page_content = get_all_content($dom);
     //echo print_r($keywords);
 
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
@@ -172,7 +206,7 @@ if (!is_null($base_url) && !empty($base_url)) {
 
     // Create a new instance of Page and add it to the pages array
     $path = str_replace($base_url, '/', $url);
-    $page = new Page($keywords, $path);
+    $page = new Page($path, $page_content, $keywords);
     $pages[] = $page;
   }
 
@@ -224,6 +258,13 @@ $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
       throw new Exception("PDO instance is not defined.");
     }
 
+    // Delete any related entry that was previously there.
+    $pdo->beginTransaction();
+    $sql = 'DELETE FROM `sites` WHERE url = ?';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$urls[0]]);
+    $pdo->commit();
+
     $pdo->beginTransaction();
 
     // Inserts a new site into the database
@@ -250,7 +291,7 @@ $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
     $sql = 'INSERT INTO pages (site_id, path) VALUES ' . $pdo_str;
     $statement = $pdo->prepare($sql);
     for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 2) {
-      $statement->bindValue($j, $sql_res[0], PDO::PARAM_INT);
+      $statement->bindValue($j, $site_id, PDO::PARAM_INT);
       $statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
     }
     $statement->execute();
@@ -272,8 +313,8 @@ $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
     }
 
     // Add keywords for each page into database
-    $placeholder_str = create_pdo_placeholder_str(3, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-    $sql = 'INSERT INTO keywords (page_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+    $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
+    $sql = 'INSERT INTO keywords (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
     $statement = $pdo->prepare($sql);
     $placeholder = 1;
     for ($i = 0; $i < $totalPages; $i++) {
@@ -281,15 +322,30 @@ $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
       $page_id = $pages[$i]->get_id();
       for ($j = 0; $j < count($page_keywords); $j++) {
         $statement->bindValue($placeholder, $page_id, PDO::PARAM_INT);
-        $statement->bindValue($placeholder+1, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
-        $statement->bindValue($placeholder+2, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
-        $placeholder += 3;
+        $statement->bindValue($placeholder+1, $site_id, PDO::PARAM_INT);
+        $statement->bindValue($placeholder+2, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
+        $statement->bindValue($placeholder+3, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
+        $placeholder += 4;
       }
     }
     $statement->execute();
 
     // Indicate that the keywords were inserted into the database successfully
     $response['inserted_into_keywords'] = true;
+
+    // Inserts all new page content into the database.
+    $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
+    $sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
+    $statement = $pdo->prepare($sql);
+    for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
+      $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
+      $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
+      $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
+    }
+    $statement->execute();
+
+    // Indicate that the contents of each page was inserted into the database successfully
+    $response['inserted_into_contents'] = true;
 
     $pdo->commit();
 
