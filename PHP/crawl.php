@@ -45,18 +45,20 @@ class Content {
 }
 
 class Page {
+  protected $content;
+  protected $id;
   protected $keywords;
   protected $path;
-  protected $id;
-  protected $content;
+  protected $title;
 
   // $keywords is an array of objects.
   // $path is a string
-  public function __construct($path, $content, $keywords) {
-    $this->path = $path;
+  public function __construct($path, $content, $keywords, $title) {
     $this->content = $content;
-    $this->keywords = $keywords;
     $this->id = null;
+    $this->keywords = $keywords;
+    $this->path = $path;
+    $this->title = $title;
   }
 
   public function get_path() {
@@ -77,6 +79,14 @@ class Page {
 
   public function set_id($new_id) {
     $this->id = $new_id;
+  }
+
+  public function get_title() {
+    return $this->id;
+  }
+
+  public function set_title($new_title) {
+    $this->title = $new_title;
   }
 }
 
@@ -198,6 +208,13 @@ if (!is_null($base_url) && !empty($base_url)) {
     $page_content = get_all_content($dom);
     //echo print_r($keywords);
 
+    // Grab the title of the page and store it.
+    $title = '';
+    $title_elem = $dom->getElementsByTagName("title");
+    if ($title_elem->length > 0) {
+      $title = $title_elem->item(0)->textContent;
+    }
+
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
     //$keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
     $keywords = remove_empty_entries($keywords);
@@ -206,7 +223,7 @@ if (!is_null($base_url) && !empty($base_url)) {
 
     // Create a new instance of Page and add it to the pages array
     $path = str_replace($base_url, '/', $url);
-    $page = new Page($path, $page_content, $keywords);
+    $page = new Page($path, $page_content, $keywords, $title);
     $pages[] = $page;
   }
 
@@ -234,137 +251,136 @@ $serverIp = $creds->server_ip;
 $dbname = $creds->database_name;
 $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
 
-//if ($response['got_pages'] === true && $response['got_sitemap'] === true) {
-  // Create a PDO object to prevent against SQL injection attacks
-  try {
-    if ($response['got_sitemap'] !== true) {
-      throw new Exception("Failed to retrieve sitemap. Can't create PDO instance.");
-    }
-    else if ($response['got_pages'] !== true) {
-      throw new Exception("Failed to retrieve pages. Can't create PDO instance.");
-    }
-
-    $pdo = new PDO($dsn, $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
-  } catch (PDOException $e) {
-    //echo 'Connection failed: ' . $e->getMessage();
-    $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
-  } catch(Exception $e) {
-    $response['pdo_error'] = $e->getMessage();
+// Create a PDO object to prevent against SQL injection attacks
+try {
+  if ($response['got_sitemap'] !== true) {
+    throw new Exception("Failed to retrieve sitemap. Can't create PDO instance.");
+  }
+  else if ($response['got_pages'] !== true) {
+    throw new Exception("Failed to retrieve pages. Can't create PDO instance.");
   }
 
-  try {
-    if (!isset($pdo)) {
-      throw new Exception("PDO instance is not defined.");
-    }
+  $pdo = new PDO($dsn, $username, $password);
+  $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
+} catch (PDOException $e) {
+  //echo 'Connection failed: ' . $e->getMessage();
+  $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
+} catch(Exception $e) {
+  $response['pdo_error'] = $e->getMessage();
+}
 
-    // Delete any related entry that was previously there.
-    $pdo->beginTransaction();
-    $sql = 'DELETE FROM `sites` WHERE url = ?';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$urls[0]]);
-    $pdo->commit();
+try {
+  if (!isset($pdo)) {
+    throw new Exception("PDO instance is not defined.");
+  }
 
-    $pdo->beginTransaction();
+  // Delete any related entry that was previously there.
+  $pdo->beginTransaction();
+  $sql = 'DELETE FROM `sites` WHERE url = ?';
+  $statement = $pdo->prepare($sql);
+  $statement->execute([$urls[0]]);
+  $pdo->commit();
 
-    // Inserts a new site into the database
-    $totalPages = count($pages);
-    $sql = 'INSERT INTO sites (url, total_pages) VALUES (?, ?)';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$urls[0], $totalPages]);
+  $pdo->beginTransaction();
 
-    // Log the success of the site insertion
-    $response['inserted_into_sites'] = true;
+  // Inserts a new site into the database
+  $totalPages = count($pages);
+  $sql = 'INSERT INTO sites (url, total_pages) VALUES (?, ?)';
+  $statement = $pdo->prepare($sql);
+  $statement->execute([$urls[0], $totalPages]);
 
-    // Grab relevant site_id from recent call
-    $sql = 'SELECT site_id FROM sites WHERE url = ?';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$urls[0]]);
-    $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-    $site_id = $sql_res[0];
+  // Log the success of the site insertion
+  $response['inserted_into_sites'] = true;
 
-    // Log the success of the site_id selection
-    $response['found_site_id'] = true;
+  // Grab relevant site_id from recent call
+  $sql = 'SELECT site_id FROM sites WHERE url = ?';
+  $statement = $pdo->prepare($sql);
+  $statement->execute([$urls[0]]);
+  $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
+  $site_id = $sql_res[0];
 
-    // Inserts all new pages into the database.
-    $pdo_str = create_pdo_placeholder_str(2, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
-    $sql = 'INSERT INTO pages (site_id, path) VALUES ' . $pdo_str;
-    $statement = $pdo->prepare($sql);
-    for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 2) {
-      $statement->bindValue($j, $site_id, PDO::PARAM_INT);
-      $statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
-    }
-    $statement->execute();
+  // Log the success of the site_id selection
+  $response['found_site_id'] = true;
 
-    // Log the success of the mass insertion of pages
-    $response['inserted_into_pages'] = true;
+  // Inserts all new pages into the database.
+  $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO pages (site_id, path, title) VALUES ' . $pdo_str;
+  $statement = $pdo->prepare($sql);
+  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 2) {
+    $statement->bindValue($j, $site_id, PDO::PARAM_INT);
+    $statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
+    $statement->bindValue($j+2, $pages[$i]->get_title(), PDO::PARAM_LOB);
+  }
+  $statement->execute();
 
-    // Calculate and store all page ID's of recently inserted pages
-    $firstPageId = $pdo->lastInsertId(); // PHP and mySQL is odd in that lastInsertId actually returns the first inserted id.
-    $lastPageId = $firstPageId + ($totalPages - 1);
-    for ($i = $firstPageId, $j = 0; $i <= $lastPageId; $i++, $j++) { // Count up from the first page added to the last page added. Assumes no interruptions inbetween entries.
-      $pages[$j]->set_id($i);
-    }
+  // Log the success of the mass insertion of pages
+  $response['inserted_into_pages'] = true;
 
-    // Get the total number of keywords acquired.
-    $totalKeywords = 0;
-    for ($i = 0; $i < $totalPages; $i++) {
-      $totalKeywords += count($pages[$i]->get_keywords());
-    }
+  // Calculate and store all page ID's of recently inserted pages
+  $firstPageId = $pdo->lastInsertId(); // PHP and mySQL is odd in that lastInsertId actually returns the first inserted id.
+  $lastPageId = $firstPageId + ($totalPages - 1);
+  for ($i = $firstPageId, $j = 0; $i <= $lastPageId; $i++, $j++) { // Count up from the first page added to the last page added. Assumes no interruptions inbetween entries.
+    $pages[$j]->set_id($i);
+  }
 
-    // Add keywords for each page into database
-    $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-    $sql = 'INSERT INTO keywords (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
-    $statement = $pdo->prepare($sql);
-    $placeholder = 1;
-    for ($i = 0; $i < $totalPages; $i++) {
-      $page_keywords = $pages[$i]->get_keywords();
-      $page_id = $pages[$i]->get_id();
-      for ($j = 0; $j < count($page_keywords); $j++) {
-        $statement->bindValue($placeholder, $page_id, PDO::PARAM_INT);
-        $statement->bindValue($placeholder+1, $site_id, PDO::PARAM_INT);
-        $statement->bindValue($placeholder+2, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
-        $statement->bindValue($placeholder+3, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
-        $placeholder += 4;
-      }
-    }
-    $statement->execute();
+  // Get the total number of keywords acquired.
+  $totalKeywords = 0;
+  for ($i = 0; $i < $totalPages; $i++) {
+    $totalKeywords += count($pages[$i]->get_keywords());
+  }
 
-    // Indicate that the keywords were inserted into the database successfully
-    $response['inserted_into_keywords'] = true;
-
-    // Inserts all new page content into the database.
-    $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
-    $sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
-    $statement = $pdo->prepare($sql);
-    for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
-      $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
-      $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
-      $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
-    }
-    $statement->execute();
-
-    // Indicate that the contents of each page was inserted into the database successfully
-    $response['inserted_into_contents'] = true;
-
-    $pdo->commit();
-
-    //echo "first page id: " . $firstPageId . "\n";
-    //echo "last page id: " . $lastPageId;
-    //echo "<pre>";
-    //echo print_r($pages);
-    //echo "</pre>";
-  } catch (Exception $e) {
-    // One of our database queries have failed.
-    // Print out the error message.
-    //echo $e->getMessage();
-    $response['db_error'] = $e->getMessage();
-    // Rollback the transaction.
-    if (isset($pdo)) {
-      $pdo->rollBack();
+  // Add keywords for each page into database
+  $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO keywords (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+  $statement = $pdo->prepare($sql);
+  $placeholder = 1;
+  for ($i = 0; $i < $totalPages; $i++) {
+    $page_keywords = $pages[$i]->get_keywords();
+    $page_id = $pages[$i]->get_id();
+    for ($j = 0; $j < count($page_keywords); $j++) {
+      $statement->bindValue($placeholder, $page_id, PDO::PARAM_INT);
+      $statement->bindValue($placeholder+1, $site_id, PDO::PARAM_INT);
+      $statement->bindValue($placeholder+2, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
+      $statement->bindValue($placeholder+3, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
+      $placeholder += 4;
     }
   }
-//}
+  $statement->execute();
+
+  // Indicate that the keywords were inserted into the database successfully
+  $response['inserted_into_keywords'] = true;
+
+  // Inserts all new page content into the database.
+  $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
+  $statement = $pdo->prepare($sql);
+  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
+    $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
+    $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
+    $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
+  }
+  $statement->execute();
+
+  // Indicate that the contents of each page was inserted into the database successfully
+  $response['inserted_into_contents'] = true;
+
+  $pdo->commit();
+
+  //echo "first page id: " . $firstPageId . "\n";
+  //echo "last page id: " . $lastPageId;
+  //echo "<pre>";
+  //echo print_r($pages);
+  //echo "</pre>";
+} catch (Exception $e) {
+  // One of our database queries have failed.
+  // Print out the error message.
+  //echo $e->getMessage();
+  $response['db_error'] = $e->getMessage();
+  // Rollback the transaction.
+  if (isset($pdo)) {
+    $pdo->rollBack();
+  }
+}
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);

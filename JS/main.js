@@ -8,7 +8,7 @@ window.addEventListener("DOMContentLoaded", function() {
       crawl(input.value)
       .then(res => {
         console.log(res);
-        console.log(res.data);
+        //console.log(res.data);
       })
       .catch(err => {
         console.log("ERROR: ", err);
@@ -26,7 +26,7 @@ window.addEventListener("DOMContentLoaded", function() {
       search(searchBar.value, "https://www.armorshieldroof.com/")
       .then(res => {
         console.log(res);
-        console.log(res.data);
+        //console.log(res.data);
       })
       .catch(err => {
         console.log("ERROR: ", err);
@@ -125,6 +125,6 @@ async function search(phrase, baseUrl) {
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());
-  return response.text();
-  //return response.json();
+  //return response.text();
+  return response.json();
 }
