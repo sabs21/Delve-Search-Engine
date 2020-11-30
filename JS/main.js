@@ -1,4 +1,6 @@
 window.addEventListener("DOMContentLoaded", function() {
+  const url = window.location.href;
+
   let input = document.getElementById("urlInput");
   let newPageBtn = document.getElementById("newSite");
 
@@ -34,6 +36,26 @@ window.addEventListener("DOMContentLoaded", function() {
     }
   });
 });
+
+// Input: Object holding result metadata.
+// Output: Result element.
+// Creates a result element.
+const createResult = (data = {url: null, title: null, snippet: null}) => {
+  let result = document.createElement("div");
+  let url = document.createElement("h6");
+  let title = document.createElement("h4");
+  let snippet = document.createElement("p");
+
+  url.innerHTML = data.url;
+  title.innerHTML = data.title;
+  snippet.innerHTML = data.snippet;
+
+  result.appendChild(url);
+  result.appendChild(title);
+  result.appendChild(snippet);
+
+  return result;
+}
 
 /*crawlSite("https://www.superiorcleaning.solutions/")
 .then(res => {

@@ -82,7 +82,7 @@ class Page {
   }
 
   public function get_title() {
-    return $this->id;
+    return $this->title;
   }
 
   public function set_title($new_title) {
@@ -213,6 +213,7 @@ if (!is_null($base_url) && !empty($base_url)) {
     $title_elem = $dom->getElementsByTagName("title");
     if ($title_elem->length > 0) {
       $title = $title_elem->item(0)->textContent;
+      $title = sanitize($title);
     }
 
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
@@ -306,7 +307,7 @@ try {
   $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
   $sql = 'INSERT INTO pages (site_id, path, title) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
-  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 2) {
+  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
     $statement->bindValue($j, $site_id, PDO::PARAM_INT);
     $statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
     $statement->bindValue($j+2, $pages[$i]->get_title(), PDO::PARAM_LOB);
@@ -442,6 +443,7 @@ function get_keywords_from_all($dom) {
     $content = " " . $block->nodeValue; // Adding the space at the start prevents blocks of content from 'sticking' together
     $options = ['symbols' => true, 'lower' => false, 'upper' => true]; // Options for the sanitize function
     $content = sanitize($content, $options);
+    $content = strtolower($content);
     $content_keywords = explode(' ', $content);
     // Ensure each keyword is longer than 1 character and is not a word from the excludes array
     foreach ($content_keywords as $keyword) {
@@ -477,6 +479,7 @@ function get_all_content($dom) {
   //foreach($tag_arr as $tag) {
     // Get and format the text
     $content = $content_wrapper->textContent;
+    $content = strtolower($content);
     //$tag_text = str_replace($punctuations, ' ', $tag_text);
     //$content = strtolower($tag_text);
     $options = ['symbols' => false, 'lower' => false, 'upper' => false];
@@ -528,7 +531,6 @@ function sanitize($str, $options = ['symbols' => false, 'lower' => false, 'upper
 
   $regexp .= '\x80-\xFF]/';
 
-  $str = strtolower($str);
   //echo '/[\x00-\x1F\x21-\x2F\x3A-\x60\x7B-\x7E\x80-\xFF]/';
   //echo $regexp . "\n";
   return preg_replace($regexp, '', $str); // Remove unwanted characters based on the values in the options array.
