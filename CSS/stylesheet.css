@@ -62,15 +62,33 @@ button:hover {
 }
 
 /* RESULTS */
-.resultContainer {
+#results {
   position: relative;
   display: flex;
   flex-direction: column;
   padding: 0px;
 }
 .result {
-  position: relative;
+  /*position: relative;
   display: flex;
-  flex-direction: column;
-  margin-top: 2em;
+  flex-direction: column;*/
+  margin-top: 0.5em;
+}
+.result:first-child {
+  margin-top: 1em;
+}
+.resultUrl {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+  color: grey;
+}
+.resultTitle {
+  position: relative;
+  display: block;
+  margin-bottom: 0.25em;
+  font-size: 17px;
+}
+.resultSnippet {
+  font-size: 14px;
 }

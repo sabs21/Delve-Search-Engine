@@ -1,5 +1,6 @@
 window.addEventListener("DOMContentLoaded", function() {
   const url = window.location.href;
+  const results = document.getElementById("results");
 
   let input = document.getElementById("urlInput");
   let newPageBtn = document.getElementById("newSite");
@@ -35,6 +36,9 @@ window.addEventListener("DOMContentLoaded", function() {
       });
     }
   });
+
+  let result = createResult({url: "https://www.armorshieldroof.com/", title: "Armor Shield: CT Roof Replacement, Repair, & Insurance Restoration", snippet: "Connecticut's leader in full-service roofing, roof replacement, and roof repair. See if you qualify to have your home owners insurance policy cover your roof replacement after the storm."});
+  results.appendChild(result);
 });
 
 // Input: Object holding result metadata.
@@ -42,16 +46,41 @@ window.addEventListener("DOMContentLoaded", function() {
 // Creates a result element.
 const createResult = (data = {url: null, title: null, snippet: null}) => {
   let result = document.createElement("div");
+  let link = document.createElement("a");
   let url = document.createElement("h6");
   let title = document.createElement("h4");
   let snippet = document.createElement("p");
 
-  url.innerHTML = data.url;
-  title.innerHTML = data.title;
-  snippet.innerHTML = data.snippet;
+  // Format url portion of the result.
+  // Check whether the url uses http or https, substring accordingly.
+  let shortenedUrl = data.url;
+  if (data.url[4] === "s") {
+    shortenedUrl = shortenedUrl.substring(8, shortenedUrl.length);
+  }
+  else {
+    shortenedUrl = shortenedUrl.substring(7, shortenedUrl.length);
+  }
 
-  result.appendChild(url);
-  result.appendChild(title);
+  if (shortenedUrl[shortenedUrl.length-1] === "/") {
+    shortenedUrl = shortenedUrl.substring(0, shortenedUrl.length-1);
+  }
+  url.innerHTML = shortenedUrl;
+  url.className = "resultUrl";
+
+  // Format the rest of the result.
+  result.className = "result";
+  link.setAttribute("href", data.url);
+  link.setAttribute("target", "_blank");
+  link.className = "resultLink";
+  title.innerHTML = data.title;
+  title.className = "resultTitle";
+  snippet.innerHTML = data.snippet;
+  snippet.className = "resultSnippet";
+
+  // Add the elements together
+  result.appendChild(link);
+  link.appendChild(url);
+  link.appendChild(title);
   result.appendChild(snippet);
 
   return result;

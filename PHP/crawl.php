@@ -50,15 +50,17 @@ class Page {
   protected $keywords;
   protected $path;
   protected $title;
+  protected $desc;
 
   // $keywords is an array of objects.
   // $path is a string
-  public function __construct($path, $content, $keywords, $title) {
+  public function __construct($path, $content, $keywords, $title, $desc) {
     $this->content = $content;
     $this->id = null;
     $this->keywords = $keywords;
     $this->path = $path;
     $this->title = $title;
+    $this->desc = $desc;
   }
 
   public function get_path() {
@@ -87,6 +89,14 @@ class Page {
 
   public function set_title($new_title) {
     $this->title = $new_title;
+  }
+
+  public function get_desc() {
+    return $this->desc;
+  }
+
+  public function set_desc($new_desc) {
+    $this->desc = $new_desc;
   }
 }
 
@@ -207,24 +217,29 @@ if (!is_null($base_url) && !empty($base_url)) {
     //$response['misc'] = get_all_content($dom);
     $page_content = get_all_content($dom);
     //echo print_r($keywords);
-
-    // Grab the title of the page and store it.
-    $title = '';
-    $title_elem = $dom->getElementsByTagName("title");
-    if ($title_elem->length > 0) {
-      $title = $title_elem->item(0)->textContent;
-      $title = sanitize($title);
-    }
-
+    
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
     //$keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
     $keywords = remove_empty_entries($keywords);
     sort($keywords, SORT_STRING);
     $keywords = array_unique_monitor_dupes($keywords);
 
+    // Grab the title of the page and store it.
+    $title = '';
+    $title_elem = $dom->getElementsByTagName("title");
+    if ($title_elem->length > 0) {
+      $title = $title_elem->item(0)->textContent;
+      $title = trim(sanitize($title));
+    }
+
+    // Grab the meta description to store it in the page object.
+    $desc = get_description($dom);
+    //$tester = $dom->getElementsByTagName('meta');
+   // $response['misc'] = $tester->item(1)->textContent;
+
     // Create a new instance of Page and add it to the pages array
     $path = str_replace($base_url, '/', $url);
-    $page = new Page($path, $page_content, $keywords, $title);
+    $page = new Page($path, $page_content, $keywords, $title, $desc);
     $pages[] = $page;
   }
 
@@ -304,13 +319,14 @@ try {
   $response['found_site_id'] = true;
 
   // Inserts all new pages into the database.
-  $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO pages (site_id, path, title) VALUES ' . $pdo_str;
+  $pdo_str = create_pdo_placeholder_str(4, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO pages (site_id, path, title, description) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
-  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
+  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 4) {
     $statement->bindValue($j, $site_id, PDO::PARAM_INT);
     $statement->bindValue($j+1, $pages[$i]->get_path(), PDO::PARAM_STR);
     $statement->bindValue($j+2, $pages[$i]->get_title(), PDO::PARAM_LOB);
+    $statement->bindValue($j+3, $pages[$i]->get_desc(), PDO::PARAM_LOB);
   }
   $statement->execute();
 
@@ -618,4 +634,19 @@ function create_pdo_placeholder_str($total_placeholders, $total_values) {
   }
 
   return $pdo_str;
+}
+
+// Input: DOMDocument Object.
+// Output: Meta description of the page supplied by the DOMDocument input.
+// Grab the meta description.
+function get_description($dom) {
+  $metas = $dom->getElementsByTagName('meta');
+
+  foreach ($metas as $meta) {
+    if (strtolower($meta->getAttribute('name')) == 'description') {
+      return trim($meta->getAttribute('content'));
+    }
+  }
+
+  return false;
 }

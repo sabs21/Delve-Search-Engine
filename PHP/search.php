@@ -45,8 +45,44 @@ class Phrase {
     }
 }
 
-// Contains all results and page seperated results.
-class ResultSet {
+class Result {
+    public $url;
+    public $title;
+    public $snippet;
+
+    public function __construct($url, $title, $snippet) {
+        $this->url = $url;
+        $this->title = $title;
+        $this->snippet = $snippet;
+    }
+
+    /*public function get_url() {
+        return $this->url;
+    }
+
+    public function set_url($new_url) {
+        $this->url = $new_url;
+    }
+
+    public function get_title() {
+        return $this->title;
+    }
+
+    public function set_title($new_title) {
+        $this->title = $new_title;
+    }
+
+    public function get_snippet() {
+        return $this->snippet;
+    }
+
+    public function set_snippet($new_snippet) {
+        $this->snippet = $new_snippet;
+    }*/
+}
+
+// Contain keyword matches based on info from the keywords table.
+class RawMatches {
     protected $results;
     protected $pages;
 
@@ -165,7 +201,7 @@ try {
     // Detect the success of pulling the site_id from the database.
     $response['found_site_id'] = true;
 
-    // Remove unnecessary characters and explode phrase into seperate terms
+    // Remove unnecessary characters and seperate phrase into seperate terms
     $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
     $response['search_phrase'] = $phrase;
     $terms = explode(' ', $phrase);
@@ -180,8 +216,8 @@ try {
         $statement->execute([$term]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
 
-        // ResultSet object contains all results from the database.
-        $result_set = new ResultSet($results);
+        // RawMatches object hold matches based on info from the keywords table.
+        $result_set = new RawMatches($results);
         $all_results[] = $result_set;
     }
 
@@ -208,16 +244,19 @@ try {
     $page_ids = array_keys($relevant_pages);
 
     // Grab pages from the database in the order of page relevance.
-    $relevant_urls = [];
+    $search_results = [];
     foreach ($page_ids as $page_id) {
-        $sql = 'SELECT path FROM pages WHERE page_id = ' . $page_id;
+        $sql = 'SELECT path, title, description FROM pages WHERE page_id = ' . $page_id;
         $statement = $pdo->prepare($sql);
         $statement->execute();
         $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-        $relevant_urls[] = $url . $results[0];
+        //$search_results[] = $url . $results[0];
+        //$search_results[] = $results[1];
+        $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
     }
 
-    $response['search_results'] = $relevant_urls;
+    //$response['search_results'] = $search_results;
+    echo json_encode($search_results);
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
@@ -235,7 +274,7 @@ $end = round(microtime(true) * 1000);
 $response['time_taken'] = $end - $begin;
 
 // Send a response back to the client.
-echo json_encode($response);
+//echo json_encode($response);
 
 // Input: String
 // Output: String containing only letters and numbers (ASCII)
