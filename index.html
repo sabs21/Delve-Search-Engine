@@ -7,7 +7,35 @@
     <script src="./JS/main.js" type="application/javascript"></script>
   </head>
   <body>
-    <input id='urlInput' />
-    <button id='newSite' class='cleanBtn'>New Site</button>
+    <div class="cardContainer">
+      <div class="card">
+        <h4 class="inputHeader">Crawl</h4>
+        <input id='urlInput' class='searchInput' />
+        <button id='newSite' class='searchSubmit'>New Site</button>
+      </div>
+      <div class="card">
+        <h4 class="inputHeader">Search</h4>
+        <input id='searchBar' class='searchInput' />
+        <button id='searchButton' class='searchSubmit'>Search</button>
+      </div> 
+      <div class="break"></div>
+      <div class="card" style="margin-bottom: 50px;">
+        <div id="titleBar" class="header">
+          <h4 style="display:inline-block;">Search Results</h4>
+          <h6 id="pageMonitor"><i>Page <b id="currentPage">1</b> of <span id="totalPages">1</span></i></h6>
+        </div>
+        <div id="results">
+          <img id="noResults" src="./CSS/sleeping.svg" alt="sleepy cloud" width="300" height="300">
+          <h5 id="noResultsText">It's a little quiet here... Try searching for your answers!</h5>
+          <!--<div id="noResults"></div>-->
+          <!--<div class="result">
+            <h6 class="url"></h6>
+            <h4 class="title"></h4>
+            <p class="snippet"></p>
+          </div>-->
+        </div>
+        <div id="pageBar"></div>
+      </div> 
+    </div>
   </body>
 </html>
