@@ -59,9 +59,13 @@ class Result {
 
 class RelevanceBin {
     protected $bins;
+    protected $maximums; // Highest dupes for each term.
+    protected $relevance_arr;
     
     public function __construct() {
         $this->bins = [];
+        $this->maximums = [];
+        $this->relevance_arr = [];
     }
 
     public function get_bins() {
@@ -72,10 +76,46 @@ class RelevanceBin {
     // If a bin exists for the given page_id, then add the new value to the existing value. 
     // If a bin does not exist for the given page_id, create one and set its value.
     public function add_bin($page_id, $value) {
-        if (!isset($this->bins[$page_id])) {
+        /*if (!isset($this->bins[$page_id])) {
             $this->bins[$page_id] = 0;
+        }*/
+        $this->bins[$page_id][] = $value;
+    }
+
+    // Store the highest dupe count of a given term.
+    // These maximums will be used to calculate an average of sorts
+    // This is STEP 1 of creating the relevance array.
+    public function add_max($max) {
+        $this->maximums[] = $max;
+    }
+
+    // Divide each bin with maximums to calculate the relevance of each page
+    // This is STEP 2 of creating the relevance array.
+    public function create_relevance_arr() {
+        $page_ids = array_keys($this->bins);
+
+        //$i = 0;
+        foreach($page_ids as $page_id) {
+            //foreach($this->maximums as $max) {
+                //$this->bins[$page_id][]
+            //}
+            $relevance = 0;
+            // The amount of bins each page contains is the same as the amount of search terms and is also the same as the amount of maximum dupe counts.
+            for ($i = 0; $i < count($this->bins[$page_id]); $i++) {
+                /*if (!isset($this->bins[$page_id]['relevance'])) {
+                    $this->bins[$page_id]['relevance'] = 0;
+                }*/
+                $relevance += ceil(($this->bins[$page_id][$i] / $this->maximums[$i]) * 100);
+            }
+            $this->relevance_arr[$page_id] = $relevance;
+            //$i += 1;
         }
-        $this->bins[$page_id] += $value;
+
+        return $this->relevance_arr;
+    }
+
+    public function get_relevance_arr() {
+        return $this->relevance_arr;
     }
 }
 
@@ -117,7 +157,8 @@ $response = [
   'results' => NULL,
   'totalResults' => NULL,
   'totalPages' => NULL,
-  'page' => $page_to_return + 1
+  'page' => $page_to_return + 1,
+  'relevance_arr' => NULL
 ];
 
 //////////////////////
@@ -180,19 +221,28 @@ try {
         $statement->execute([$term]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
+        $max = 0;
         // Add up the relevance score for each page based on keyword occurances on the page.
         foreach ($results as $result) {
             $bins->add_bin($result['page_id'], $result['dupe_count']);
+            if ($result['dupe_count'] > $max) {
+                $max = $result['dupe_count'];
+            }
         }
+
+        // Add the max dupe_count for this term to the max array in the RelevanceBin instance.
+        // We will use this to calculate relevance for each page later.
+        $bins->add_max($max);
     }
 
     // Sort the pages by their relevance score
-    $bins = $bins->get_bins();
-    arsort($bins); // Sorted in descending order (most relevant to least relevant).
-    $relevant_pages = $bins;
+    //$bins = $bins->get_bins();
+    $relevance_arr = $bins->create_relevance_arr();
+    arsort($relevance_arr); // Sorted in descending order (most relevant to least relevant).
+    //$relevant_pages = $bins;
 
     // Put all array keys (aka page_id's) into a separate array.
-    $page_ids = array_keys($relevant_pages);
+    $page_ids = array_keys($relevance_arr);
 
     // Grab pages from the database in the order of page relevance.
     $search_results = [];
@@ -205,6 +255,7 @@ try {
         $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
     }
 
+    $response['relevance_arr'] = $relevance_arr;
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
