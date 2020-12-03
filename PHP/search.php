@@ -55,66 +55,13 @@ class Result {
         $this->title = $title;
         $this->snippet = $snippet;
     }
-
-    /*public function get_url() {
-        return $this->url;
-    }
-
-    public function set_url($new_url) {
-        $this->url = $new_url;
-    }
-
-    public function get_title() {
-        return $this->title;
-    }
-
-    public function set_title($new_title) {
-        $this->title = $new_title;
-    }
-
-    public function get_snippet() {
-        return $this->snippet;
-    }
-
-    public function set_snippet($new_snippet) {
-        $this->snippet = $new_snippet;
-    }*/
 }
-
-// Contain keyword matches based on info from the keywords table.
-/*class MatchList {
-    protected $results;
-    protected $pages;
-
-    public function __construct($results) {
-        $this->results = $results;
-        $this->pages = array_chunk($results, 10);
-    }
-
-    public function get_results() {
-        return $this->results;
-    }
-
-    public function set_results($new_results) {
-        $this->results = $new_results;
-    }
-
-    public function get_page($num) {
-        return $pages[$num];
-    }
-
-    public function get_all_pages() {
-        return $pages;
-    }
-}*/
 
 class RelevanceBin {
     protected $bins;
-    //protected $pages;
     
     public function __construct() {
         $this->bins = [];
-        $this->pages = null;
     }
 
     public function get_bins() {
@@ -125,17 +72,11 @@ class RelevanceBin {
     // If a bin exists for the given page_id, then add the new value to the existing value. 
     // If a bin does not exist for the given page_id, create one and set its value.
     public function add_bin($page_id, $value) {
+        if (!isset($this->bins[$page_id])) {
+            $this->bins[$page_id] = 0;
+        }
         $this->bins[$page_id] += $value;
-        //$this->pages = array_chunk($this->bins, 10);
     }
-
-    /*public function get_page($num) {
-        return $pages[$num];
-    }
-
-    public function get_all_pages() {
-        return $pages;
-    }*/
 }
 
 /////////////////////
@@ -171,8 +112,11 @@ if ($url[strlen($url) - 1] == '/') {
 ];*/
 
 $response = [
+  'searchPhrase' => NULL,
+  'searchTerms' => NULL,
   'results' => NULL,
-  'total_results' => NULL,
+  'totalResults' => NULL,
+  'totalPages' => NULL,
   'page' => $page_to_return + 1
 ];
 
@@ -217,58 +161,35 @@ try {
     $site_id = $sql_res[0];
 
     // Detect the success of pulling the site_id from the database.
-    $response['found_site_id'] = true;
+    //$response['found_site_id'] = true;
 
     // Remove unnecessary characters and seperate phrase into seperate terms
     $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
-    $response['search_phrase'] = $phrase;
+    $response['searchPhrase'] = $phrase;
     $terms = explode(' ', $phrase);
-    $response['search_terms'] = $terms;
+    $response['searchTerms'] = $terms;
 
     // Create a new array of bins which will hold the relevance score for each page.
     $bins = new RelevanceBin();
 
     // Obtain results for each term in the search phrase
-    //$all_results = [];
     foreach ($terms as $term) {
         // Search through keywords for all pages which contain a matching keyword.
         $sql = 'SELECT page_id, dupe_count FROM keywords WHERE keyword = ? ORDER BY page_id DESC';
         $statement = $pdo->prepare($sql);
         $statement->execute([$term]);
-        $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
+        $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
-        // MatchList object contains occurances of some keyword per page.
-        //$result_set = new MatchList($results);
-        //$all_results[] = $result_set;
-        //$all_results[] = $results;
+        // Add up the relevance score for each page based on keyword occurances on the page.
         foreach ($results as $result) {
             $bins->add_bin($result['page_id'], $result['dupe_count']);
         }
     }
 
-    //$response['misc'] = $all_results[0]->get_results();
-
-    // Create a new array of bins which will hold the relevance score for each page.
-    //$bins = new RelevanceBin();
-
-    // Calculate relevance by adding to bins which correspond to each page_id
-    /*foreach ($all_results as $result_set) {
-        $results = $result_set->get_results();
-        foreach ($results as $result) {
-            $bins->add_bin($result['page_id'], $result['dupe_count']);
-        }
-    }*/
-    /*foreach ($all_results as $results) {
-        foreach ($results as $result) {
-            $bins->add_bin($result['page_id'], $result['dupe_count']);
-        }
-    }*/
-
     // Sort the pages by their relevance score
     $bins = $bins->get_bins();
     arsort($bins); // Sorted in descending order (most relevant to least relevant).
     $relevant_pages = $bins;
-    //$response['ordered_by_relevance'] = $relevant_pages;
 
     // Put all array keys (aka page_id's) into a separate array.
     $page_ids = array_keys($relevant_pages);
@@ -280,13 +201,12 @@ try {
         $statement = $pdo->prepare($sql);
         $statement->execute();
         $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-        //$search_results[] = $url . $results[0];
-        //$search_results[] = $results[1];
+
         $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
     }
 
-    $response['total_results'] = count($search_results);
-    //$response['search_results'] = $search_results;
+    $response['totalResults'] = count($search_results);
+    $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
     $response['results'] = $result_pages[$page_to_return];
     echo json_encode($response);

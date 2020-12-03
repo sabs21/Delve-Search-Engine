@@ -1,6 +1,7 @@
 window.addEventListener("DOMContentLoaded", function() {
   const url = window.location.href;
   const results = document.getElementById("results");
+  const pageBar = document.getElementById("pageBar");
 
   let input = document.getElementById("urlInput");
   let newPageBtn = document.getElementById("newSite");
@@ -30,17 +31,13 @@ window.addEventListener("DOMContentLoaded", function() {
       .then(res => {
         console.log(res);
         results.innerHTML = ""; // Clear out the old results to make room for the new.
+        pageBar.innerHTML = "";
 
         // Populate the results container with results.
-        res.results.forEach(result => {
-          let data = {
-            url: result.url, 
-            title: result.title, 
-            snippet: result.snippet
-          }
-          //let resultElem = createResult(data);
-          results.appendChild(createResult(data));
-        });
+        populate(res, results);
+        pageBar.appendChild(createPageButtons(res));
+        setCurrentPage(res.page);
+        setTotalPages(res.totalPages);
       })
       .catch(err => {
         console.log("ERROR: ", err);
@@ -94,50 +91,93 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
   return result;
 }
 
-const createPageButtons = (totalPages) => {
-  let pageButtons = document.createElement("span");
-  for (let i = 0; i < totalPages; i++) {
-    let pageButton = document.createElement("a");
-    // make a page button that flips between search result pages
-  }
+// Input: str is the string to bold all matching terms for.
+//        searchTerms is an array of words from the search phrase. 
+// Output: String with bolded terms
+// Bold all terms from the search phrase in the given string
+const boldSearchTerms = (str, searchTerms) => {
+  let bolded = str;
+  searchTerms.forEach(term => {
+    let innerRegex = " " + term + " ";
+    let regex = new RegExp(innerRegex, "g");
+
+    bolded = bolded.replace(regex, " <b>" + term + "</b> ");
+  });
+  return bolded;
 }
 
-/*crawlSite("https://www.superiorcleaning.solutions/")
-.then(res => {
-  console.log(res);
-  console.log(res.data);
-});*/
+// Input: searchData (what was obtained from the backend)
+// Output: The contents of the pageBar element
+// Create the page buttons to sift through results.
+const createPageButtons = (searchData) => {
+  // This is needed for creating the page turn event listeners
+  const results = document.getElementById("results");
+  //const searchPhrase = document.getElementById("searchBar").value;
 
-// Input: Page URL.
+  //let totalPages = Math.ceil(searchData.totalResults / 10);
+  let pageButtons = document.createElement("span");
+
+  // Create each page button.
+  for (let i = 0; i < searchData.totalPages; i++) {
+    let pageButton = document.createElement("button");
+    pageButton.className="pageButton";
+    pageButton.innerHTML = i+1;
+    pageButton.setAttribute("page", i+1);
+
+    // Page turn listener
+    pageButton.addEventListener("click", (e) => {
+      let page = e.target.attributes[1].value;
+      search(searchData.searchPhrase, "https://www.armorshieldroof.com/", page)
+      .then(res => {
+        console.log(res);
+        results.innerHTML = ""; // Clear out the old results to make room for the new.
+        populate(res, results); // Populate the results container with results.
+        setCurrentPage(res.page);
+        setTotalPages(res.totalPages);
+      })
+      .catch(err => {
+        console.log("ERROR: ", err);
+      });
+    });
+
+    pageButtons.appendChild(pageButton);
+  }
+
+  pageButtons.className = "pageButtons";
+  return pageButtons;
+}
+
+// Input: res is what was obtained from the backend.
+//        container is the results container
 // Output: None.
-// Crawls a given sitemap and extracts metadata (title, h1, h2, h3). 
-// This metadata gets stored into a database.
-/*const crawlSite = (sitemapUrl) => {
-  return new Promise((resolve, reject) => {
-    // The url used for the AJAX request
-    let reqUrl = `${scriptUrl}?url=${pageUrl}`;
-
-    // Send countUp.php this page's URL.
-    let request = new XMLHttpRequest();
-    request.open("GET", reqUrl, true);
-    request.setRequestHeader("Access-Control-Allow-Origin", "*");
-    request.setRequestHeader("Access-Control-Allow-Credentials", "true");
-    request.setRequestHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
-    request.setRequestHeader("Access-Control-Allow-Headers", "Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers, Access-Control-Allow-Headers");
-    
-    request.onreadystatechange = () => {
-      if (this.readyState == 4)
-      {
-        if (this.status == 200)
-        {
-        let result = this.responseText;
-        resolve(result);
-        }
-      }
+// Populate the results container with results.
+const populate = (res, container) => {
+  res.results.forEach(result => {
+    let data = {
+      url: result.url, 
+      title: result.title, 
+      snippet: boldSearchTerms(result.snippet, res.searchTerms)
     }
-    request.send();
+    //let resultElem = createResult(data);
+    container.appendChild(createResult(data));
   });
-}*/
+}
+
+// Input: page is the page which the user should currently be on.
+// Output: None.
+// Set the current page value within the pageMonitor.
+const setCurrentPage = (page) => {
+  const currentPageElem = document.getElementById("currentPage");
+  currentPageElem.innerHTML = page;
+}
+
+// Input: totalPages is the count of all pages.
+// Output: None.
+// Set the total page value within the pageMonitor.
+const setTotalPages = (totalPages) => {
+  const totalPagesElem = document.getElementById("totalPages");
+  totalPagesElem.innerHTML = totalPages;
+}
 
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
