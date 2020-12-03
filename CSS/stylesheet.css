@@ -21,7 +21,6 @@ html {
   padding: 2em;
   margin: 2em 2em 0em 2em;
   flex: 1;
-  max-height: 350px;
   background-color: white;
   border-radius: 10px;
   box-shadow: 0px 1px 7px 0px rgba(0,0,0,0.42);
@@ -72,7 +71,7 @@ button:hover {
   /*position: relative;
   display: flex;
   flex-direction: column;*/
-  margin-top: 0.5em;
+  margin-top: 0.75em;
 }
 .result:first-child {
   margin-top: 1em;
@@ -91,4 +90,27 @@ button:hover {
 }
 .resultSnippet {
   font-size: 14px;
+}
+#noResults {
+  animation: 1.5s ease infinite alternate float;
+}
+#noResults, #noResultsText {
+  margin-left: auto;
+  margin-right: auto;
+}
+#noResultsText {
+  font-size: 16px;
+  position: relative;
+  display: block;
+  color: grey;
+}
+
+@keyframes float {
+  from {
+    transform: translateY(0%);
+  }
+
+  to {
+    transform: translateY(2%);
+  }
 }

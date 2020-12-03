@@ -82,7 +82,7 @@ class Result {
 }
 
 // Contain keyword matches based on info from the keywords table.
-class RawMatches {
+/*class MatchList {
     protected $results;
     protected $pages;
 
@@ -106,13 +106,15 @@ class RawMatches {
     public function get_all_pages() {
         return $pages;
     }
-}
+}*/
 
 class RelevanceBin {
     protected $bins;
+    //protected $pages;
     
     public function __construct() {
         $this->bins = [];
+        $this->pages = null;
     }
 
     public function get_bins() {
@@ -124,7 +126,16 @@ class RelevanceBin {
     // If a bin does not exist for the given page_id, create one and set its value.
     public function add_bin($page_id, $value) {
         $this->bins[$page_id] += $value;
+        //$this->pages = array_chunk($this->bins, 10);
     }
+
+    /*public function get_page($num) {
+        return $pages[$num];
+    }
+
+    public function get_all_pages() {
+        return $pages;
+    }*/
 }
 
 /////////////////////
@@ -137,6 +148,7 @@ $agent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHT
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
 $phrase = json_decode($raw)->phrase;
+$page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
 
 // Format the url which was recieved so that it does not end in '/'
 if ($url[strlen($url) - 1] == '/') {
@@ -145,7 +157,7 @@ if ($url[strlen($url) - 1] == '/') {
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
-$response = [
+/*$response = [
   'time_taken' => 0,
   'found_site_id' => false,
   'search_phrase' => NULL,
@@ -156,6 +168,12 @@ $response = [
   'pdo_error' => NULL,
   'db_error' => NULL,
   'misc' => NULL
+];*/
+
+$response = [
+  'results' => NULL,
+  'total_results' => NULL,
+  'page' => $page_to_return + 1
 ];
 
 //////////////////////
@@ -207,8 +225,11 @@ try {
     $terms = explode(' ', $phrase);
     $response['search_terms'] = $terms;
 
+    // Create a new array of bins which will hold the relevance score for each page.
+    $bins = new RelevanceBin();
+
     // Obtain results for each term in the search phrase
-    $all_results = [];
+    //$all_results = [];
     foreach ($terms as $term) {
         // Search through keywords for all pages which contain a matching keyword.
         $sql = 'SELECT page_id, dupe_count FROM keywords WHERE keyword = ? ORDER BY page_id DESC';
@@ -216,23 +237,32 @@ try {
         $statement->execute([$term]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
 
-        // RawMatches object hold matches based on info from the keywords table.
-        $result_set = new RawMatches($results);
-        $all_results[] = $result_set;
+        // MatchList object contains occurances of some keyword per page.
+        //$result_set = new MatchList($results);
+        //$all_results[] = $result_set;
+        //$all_results[] = $results;
+        foreach ($results as $result) {
+            $bins->add_bin($result['page_id'], $result['dupe_count']);
+        }
     }
 
     //$response['misc'] = $all_results[0]->get_results();
 
     // Create a new array of bins which will hold the relevance score for each page.
-    $bins = new RelevanceBin();
+    //$bins = new RelevanceBin();
 
     // Calculate relevance by adding to bins which correspond to each page_id
-    foreach ($all_results as $result_set) {
+    /*foreach ($all_results as $result_set) {
         $results = $result_set->get_results();
         foreach ($results as $result) {
             $bins->add_bin($result['page_id'], $result['dupe_count']);
         }
-    }
+    }*/
+    /*foreach ($all_results as $results) {
+        foreach ($results as $result) {
+            $bins->add_bin($result['page_id'], $result['dupe_count']);
+        }
+    }*/
 
     // Sort the pages by their relevance score
     $bins = $bins->get_bins();
@@ -255,8 +285,11 @@ try {
         $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
     }
 
+    $response['total_results'] = count($search_results);
     //$response['search_results'] = $search_results;
-    echo json_encode($search_results);
+    $result_pages = array_chunk($search_results, 10);
+    $response['results'] = $result_pages[$page_to_return];
+    echo json_encode($response);
 } 
 catch (Exception $e) {
     // One of our database queries have failed.

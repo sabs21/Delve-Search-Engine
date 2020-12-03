@@ -11,7 +11,7 @@ window.addEventListener("DOMContentLoaded", function() {
       crawl(input.value)
       .then(res => {
         console.log(res);
-        //console.log(res.data);
+        
       })
       .catch(err => {
         console.log("ERROR: ", err);
@@ -29,16 +29,24 @@ window.addEventListener("DOMContentLoaded", function() {
       search(searchBar.value, "https://www.armorshieldroof.com/")
       .then(res => {
         console.log(res);
-        //console.log(res.data);
+        results.innerHTML = ""; // Clear out the old results to make room for the new.
+
+        // Populate the results container with results.
+        res.results.forEach(result => {
+          let data = {
+            url: result.url, 
+            title: result.title, 
+            snippet: result.snippet
+          }
+          //let resultElem = createResult(data);
+          results.appendChild(createResult(data));
+        });
       })
       .catch(err => {
         console.log("ERROR: ", err);
       });
     }
   });
-
-  let result = createResult({url: "https://www.armorshieldroof.com/", title: "Armor Shield: CT Roof Replacement, Repair, & Insurance Restoration", snippet: "Connecticut's leader in full-service roofing, roof replacement, and roof repair. See if you qualify to have your home owners insurance policy cover your roof replacement after the storm."});
-  results.appendChild(result);
 });
 
 // Input: Object holding result metadata.
@@ -84,6 +92,14 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
   result.appendChild(snippet);
 
   return result;
+}
+
+const createPageButtons = (totalPages) => {
+  let pageButtons = document.createElement("span");
+  for (let i = 0; i < totalPages; i++) {
+    let pageButton = document.createElement("a");
+    // make a page button that flips between search result pages
+  }
 }
 
 /*crawlSite("https://www.superiorcleaning.solutions/")
@@ -153,10 +169,11 @@ async function crawl(urlToCrawl) {
 }
 
 // Input: Phrase is the search phrase that the user types.
-//        baseUrl is used to generate the sitemap url.
+//        baseUrl is used to generate the sitemap url and identify which site to search.
+//        page tells the server what page to return. Each page has 10 results.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function search(phrase, baseUrl) {
+async function search(phrase, baseUrl, page = 1) {
   let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
   // Default options are marked with *
   const response = await fetch(phpUrl, {
@@ -172,7 +189,8 @@ async function search(phrase, baseUrl) {
     referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
     body: JSON.stringify({
       url: baseUrl,
-      phrase: phrase
+      phrase: phrase,
+      page: page
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());
