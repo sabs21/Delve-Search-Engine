@@ -450,37 +450,38 @@ function get_keywords_from_tag($dom, $tag) {
 function get_keywords_from_all($dom) {
   $excludes = ['an', 'as', 'by', 'the', 'and', 'i', 'was', 'a', 'to', 'like', 'we', 'us', 'in', 'our', 'of', 'for', 'from', 'that', 'they', 'on', 'this', 'can', 'so', 'be', 'it', 'its', 'is', 'if', 'or', 'at', 'you', 'your', 'are', 'when', 'with', 'will']; // Don't consider these as keywords
   // Use DOMXpath to grab content from each element with the data-element-type="paragraph" attribute.
-  $xpath = new DOMXpath($dom);
-  $content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
+  //$xpath = new DOMXpath($dom);
+  //$content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
+  $content = get_all_content($dom);
   $all_keywords = [];
 
-  foreach ($content_blocks as $block) {
+  //foreach ($content_blocks as $block) {
     // Get the text content and seperate each (formatted) word into an array
-    $content = " " . $block->nodeValue; // Adding the space at the start prevents blocks of content from 'sticking' together
-    $options = ['symbols' => true, 'lower' => false, 'upper' => true]; // Options for the sanitize function
-    $content = sanitize($content, $options);
-    $content = strtolower($content);
-    $content_keywords = explode(' ', $content);
-    // Ensure each keyword is longer than 1 character and is not a word from the excludes array
-    foreach ($content_keywords as $keyword) {
-      $isValid = true;
-      if (isset($keyword[1])) { // If the word is longer than 1 letter, then it can be considered a keyword.
-        foreach($excludes as $exclude) {
-          if ($exclude == $keyword) {
-            $isValid = false;
-            continue;
-          }
+    //$content = " " . $block->nodeValue; // Adding the space at the start prevents blocks of content from 'sticking' together
+  $options = ['symbols' => true, 'lower' => false, 'upper' => true]; // Options for the sanitize function
+  $content = sanitize($content, $options);
+  $content = strtolower($content);
+  $content_keywords = explode(' ', $content);
+  // Ensure each keyword is longer than 1 character and is not a word from the excludes array
+  foreach ($content_keywords as $keyword) {
+    $isValid = true;
+    if (isset($keyword[1])) { // If the word is longer than 1 letter, then it can be considered a keyword.
+      foreach($excludes as $exclude) {
+        if ($exclude == $keyword) {
+          $isValid = false;
+          continue;
         }
       }
-      else {
-        $isValid = false;
-      }
+    }
+    else {
+      $isValid = false;
+    }
 
-      if ($isValid) {
-        $all_keywords[] = $keyword;
-      }
+    if ($isValid) {
+      $all_keywords[] = $keyword;
     }
   }
+  //}
   return $all_keywords;
 }
 
@@ -491,7 +492,7 @@ function get_all_content($dom) {
   //$excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
   //$all_keywords = [];
   //$tag_arr = $dom->getElementsByTagName($tag);
-  $content_wrapper = $dom->getElementById("dm_content");
+  $content_wrapper = $dom->getElementById("site_content");
   //foreach($tag_arr as $tag) {
     // Get and format the text
     $content = $content_wrapper->textContent;
@@ -549,7 +550,7 @@ function sanitize($str, $options = ['symbols' => false, 'lower' => false, 'upper
 
   //echo '/[\x00-\x1F\x21-\x2F\x3A-\x60\x7B-\x7E\x80-\xFF]/';
   //echo $regexp . "\n";
-  return preg_replace($regexp, '', $str); // Remove unwanted characters based on the values in the options array.
+  return trim(preg_replace($regexp, ' ', $str)); // Remove unwanted characters based on the values in the options array.
 }
 
 // Input: Any array

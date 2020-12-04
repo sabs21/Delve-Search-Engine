@@ -98,10 +98,22 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
 const boldSearchTerms = (str, searchTerms) => {
   let bolded = str;
   searchTerms.forEach(term => {
-    let innerRegex = " " + term + " ";
-    let regex = new RegExp(innerRegex, "g");
+    let innerRegex = " " + term + "(?=,| )";
+    let regex = new RegExp(innerRegex, "gi");
 
-    bolded = bolded.replace(regex, " <b>" + term + "</b> ");
+    // This loop adds the bold tags to every regex match it finds.
+    // Once bold tags are added, that term won't match the regex again since the space before the term gets removed. This avoids infinite loops.
+    let match = regex.exec(bolded);
+    while (match) {
+      let termStart = match.index + 1; // We add 1 because the regex includes a space at the beginning. Index.
+      let termEnd = termStart + term.length; // Index.
+      let firstHalf = bolded.substring(0, termStart); // Each half excludes the matched string.
+      let secondHalf = bolded.substring(termEnd, bolded.length - 1);
+      let termFromStr = bolded.substring(termStart, termEnd); // Getting the term like this preserves its uppercase and lowercase letters from the original string.
+      
+      bolded = firstHalf + "<b>" + termFromStr + "</b>" + secondHalf;
+      match = regex.exec(bolded); // Check if there are any more matches before the while condition is checked again.
+    }
   });
   return bolded;
 }
