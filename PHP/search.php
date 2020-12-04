@@ -123,13 +123,29 @@ class RelevanceBin {
 // INITIALIZATION //
 ///////////////////
 
-$agent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.370.0 Safari/533.4';
+// Use this array as a basic response object. May need something more in depth in the future.
+$response = [
+    'searchPhrase' => NULL,
+    'searchTerms' => NULL,
+    'results' => NULL,
+    'totalResults' => NULL,
+    'totalPages' => NULL,
+    'page' => $page_to_return + 1,
+    'relevance_arr' => NULL,
+    'matched' => NULL,
+];
 
 // Get data from the POST sent from the fetch API
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
 $phrase = json_decode($raw)->phrase;
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
+
+// Remove unnecessary characters and seperate phrase into seperate terms
+$phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
+$response['searchPhrase'] = $phrase;
+$terms = explode(' ', $phrase);
+$response['searchTerms'] = $terms;
 
 // Format the url which was recieved so that it does not end in '/'
 if ($url[strlen($url) - 1] == '/') {
@@ -151,15 +167,28 @@ if ($url[strlen($url) - 1] == '/') {
   'misc' => NULL
 ];*/
 
-$response = [
-  'searchPhrase' => NULL,
-  'searchTerms' => NULL,
-  'results' => NULL,
-  'totalResults' => NULL,
-  'totalPages' => NULL,
-  'page' => $page_to_return + 1,
-  'relevance_arr' => NULL
-];
+///////////////////////////////////////////////
+// CHECK N' GUESS THE INTENDED SEARCH TERMS //
+/////////////////////////////////////////////
+
+// Use wordSorted to find the word to make sure it's spelled right. 
+// If the term is not in the dictionary, it's spelled wrong.
+$path = "./wordSorted.json";
+
+$json = file_get_contents($path);
+$dict = json_decode($json, TRUE);
+
+foreach($terms as $term) {
+    $matchIndex = binarySearchWord($dict, 0, count($dict) - 1, $term);
+    $response['matched'][] = $dict[$matchIndex]['word'];
+    //$response['matched'] = $dict[$matchIndex]->word;
+}
+
+
+// For terms that are spelled wrong, use metaphoneSorted to find any possible matches.
+// We want to find the word with the same metaphone and the shortest Levenshtein distance.
+
+
 
 //////////////////////
 // SEARCH DATABASE //
@@ -335,4 +364,40 @@ function create_pdo_placeholder_str($total_placeholders, $total_values) {
     }
   
     return $pdo_str;
+}
+
+// Input: arr is the array of words
+//        l is low index
+//        h is high index
+//        key is the word we're searching for
+// Output: Index of the located word in the given array (arr)
+// For checking spelling and search terms
+function binarySearchWord($arr, $l, $h, $key) { 
+    while ($h >= $l) {
+        $mid = ceil($l + ($h - $l) / 2); 
+
+        // If the element is present at the middle itself 
+        if ($arr[$mid]['word'] == $key) {
+            return floor($mid); 
+        }
+
+        // If element is smaller than mid, then 
+        // it can only be present in left subarray 
+        if ($arr[$mid]['word'] > $key) {
+            $h = $mid - 1;
+        }
+        else {
+            // Else the element can only be present in right subarray 
+            $l = $mid + 1;
+        }
+    }
+
+    // We reach here when element is not present in array 
+    return -1;
+} 
+
+// Get rid of a suffix at the end of a word.
+// Ex. Get rid of the 's' at the end of services.
+function removeSuffix($str) {
+
 }
