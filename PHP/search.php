@@ -171,6 +171,11 @@ if ($url[strlen($url) - 1] == '/') {
 // CHECK N' GUESS THE INTENDED SEARCH TERMS //
 /////////////////////////////////////////////
 
+// Search the the list of keywords from the database first and foremost!
+// If no luck, then search the dictionary...
+// If still no luck, find the word with the same metaphone and the shortest Levenshtein distance.
+// If STILL no luck, remove the term from the search terms.
+
 // Use wordSorted to find the word to make sure it's spelled right. 
 // If the term is not in the dictionary, it's spelled wrong.
 $path = "./wordSorted.json";

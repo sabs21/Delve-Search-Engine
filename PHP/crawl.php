@@ -290,6 +290,7 @@ try {
     throw new Exception("PDO instance is not defined.");
   }
 
+  // SITES TABLE
   // Delete any related entry that was previously there.
   $pdo->beginTransaction();
   $sql = 'DELETE FROM `sites` WHERE url = ?';
@@ -299,6 +300,7 @@ try {
 
   $pdo->beginTransaction();
 
+  // SITES TABLE
   // Inserts a new site into the database
   $totalPages = count($pages);
   $sql = 'INSERT INTO sites (url, total_pages) VALUES (?, ?)';
@@ -308,6 +310,7 @@ try {
   // Log the success of the site insertion
   $response['inserted_into_sites'] = true;
 
+  // SITES TABLE
   // Grab relevant site_id from recent call
   $sql = 'SELECT site_id FROM sites WHERE url = ?';
   $statement = $pdo->prepare($sql);
@@ -318,6 +321,7 @@ try {
   // Log the success of the site_id selection
   $response['found_site_id'] = true;
 
+  // PAGES TABLE
   // Inserts all new pages into the database.
   $pdo_str = create_pdo_placeholder_str(4, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
   $sql = 'INSERT INTO pages (site_id, path, title, description) VALUES ' . $pdo_str;
@@ -346,6 +350,7 @@ try {
     $totalKeywords += count($pages[$i]->get_keywords());
   }
 
+  // KEYWORDS TABLE
   // Add keywords for each page into database
   $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
   $sql = 'INSERT INTO keywords (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
@@ -367,6 +372,7 @@ try {
   // Indicate that the keywords were inserted into the database successfully
   $response['inserted_into_keywords'] = true;
 
+  // CONTENTS TABLE
   // Inserts all new page content into the database.
   $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
   $sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
@@ -488,37 +494,11 @@ function get_keywords_from_all($dom) {
 // WIP, I just copied and renamed the get_keywords_from_tag function.
 // should not include header/footer content
 function get_all_content($dom) {
-  //$punctuations = [',', '.', '[', ']', '{', '}', '\'', '"', '(', ')', '\n'];
-  //$excludes = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be']; // Don't consider these as keywords
-  //$all_keywords = [];
-  //$tag_arr = $dom->getElementsByTagName($tag);
   $content_wrapper = $dom->getElementById("site_content");
-  //foreach($tag_arr as $tag) {
-    // Get and format the text
-    $content = $content_wrapper->textContent;
-    $content = strtolower($content);
-    //$tag_text = str_replace($punctuations, ' ', $tag_text);
-    //$content = strtolower($tag_text);
-    $options = ['symbols' => false, 'lower' => false, 'upper' => false];
-    return sanitize($content, $options);
-
-    // Separate each word and place inside of a keyword array.
-    //$tag_keywords = explode(' ', $tag_text);
-    /*foreach($tag_keywords as $keyword) {
-      $isValid = true;
-      foreach($excludes as $exclude) {
-        if($exclude == $keyword) 
-        {
-          $isValid = false;
-          break;
-        }
-      }
-      if ($isValid) {
-        $all_keywords[] = $keyword;
-      }
-    }*/
-  //}
-  //return $all_keywords;
+  // Get and format the text
+  $content = $content_wrapper->textContent;
+  $content = strtolower($content);
+  return sanitize($content);
 }
 
 // Input: String
