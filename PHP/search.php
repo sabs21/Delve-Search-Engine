@@ -18,6 +18,16 @@ ini_set('display_errors', 0);
 // CLASS DEFINITIONS //
 //////////////////////
 
+class TermDistance {
+    public $term;
+    public $distance;
+
+    public function __construct($term, $distance) {
+        $this->term = $term;
+        $this->distance = $distance;
+    }
+}
+
 // This contains the search phrase typed by the user and the url searched from.
 class Phrase {
     protected $phrase;
@@ -123,18 +133,6 @@ class RelevanceBin {
 // INITIALIZATION //
 ///////////////////
 
-// Use this array as a basic response object. May need something more in depth in the future.
-$response = [
-    'searchPhrase' => NULL,
-    'searchTerms' => NULL,
-    'results' => NULL,
-    'totalResults' => NULL,
-    'totalPages' => NULL,
-    'page' => $page_to_return + 1,
-    'relevance_arr' => NULL,
-    'matched' => NULL,
-];
-
 // Get data from the POST sent from the fetch API
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
@@ -143,14 +141,37 @@ $page_to_return = json_decode($raw)->page - 1; // This value will be used as an 
 
 // Remove unnecessary characters and seperate phrase into seperate terms
 $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
-$response['searchPhrase'] = $phrase;
 $terms = explode(' ', $phrase);
-$response['searchTerms'] = $terms;
 
 // Format the url which was recieved so that it does not end in '/'
-if ($url[strlen($url) - 1] == '/') {
-    $url = substr($url, 0, strlen($url) - 1);
+if ($url[strlen($url) - 1] !== '/') {
+    //$url = substr($url, 0, strlen($url) - 1);
+    $url .= '/';
 }
+
+// Import English dictionary data to check and correct mis-spellings
+$path = "./wordSorted.json";
+$json = file_get_contents($path);
+$wordDict = json_decode($json, TRUE);
+
+// Import metaphone dictionary to find potential mis-spelling corrections
+$path = "./metaphoneSorted.json";
+$json = file_get_contents($path);
+$metaDict = json_decode($json, TRUE);
+
+// Use this array as a basic response object. May need something more in depth in the future.
+$response = [
+    'searchPhrase' => $phrase,
+    'searchTerms' => $terms,
+    'results' => NULL,
+    'totalResults' => NULL,
+    'totalPages' => NULL,
+    'page' => $page_to_return + 1,
+    'relevance_arr' => NULL,
+    'matched' => NULL,
+    'suggestions' => NULL,
+    'suggestions_sorted' => NULL
+];
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -167,37 +188,9 @@ if ($url[strlen($url) - 1] == '/') {
   'misc' => NULL
 ];*/
 
-///////////////////////////////////////////////
-// CHECK N' GUESS THE INTENDED SEARCH TERMS //
-/////////////////////////////////////////////
-
-// Search the the list of keywords from the database first and foremost!
-// If no luck, then search the dictionary...
-// If still no luck, find the word with the same metaphone and the shortest Levenshtein distance.
-// If STILL no luck, remove the term from the search terms.
-
-// Use wordSorted to find the word to make sure it's spelled right. 
-// If the term is not in the dictionary, it's spelled wrong.
-$path = "./wordSorted.json";
-
-$json = file_get_contents($path);
-$dict = json_decode($json, TRUE);
-
-foreach($terms as $term) {
-    $matchIndex = binarySearchWord($dict, 0, count($dict) - 1, $term);
-    $response['matched'][] = $dict[$matchIndex]['word'];
-    //$response['matched'] = $dict[$matchIndex]->word;
-}
-
-
-// For terms that are spelled wrong, use metaphoneSorted to find any possible matches.
-// We want to find the word with the same metaphone and the shortest Levenshtein distance.
-
-
-
-//////////////////////
-// SEARCH DATABASE //
-////////////////////
+/////////////////////////////////
+// PREPARE TO SEARCH DATABASE //
+///////////////////////////////
 
 // Get credentials for database
 $rawCreds = file_get_contents("../credentials.json");
@@ -221,6 +214,35 @@ catch(Exception $e) {
     $response['pdo_error'] = $e->getMessage();
 }
 
+///////////////////////////////////////////////
+// CHECK N' GUESS THE INTENDED SEARCH TERMS //
+/////////////////////////////////////////////
+
+// Search the the list of keywords from the database first and foremost!
+// If no luck, then search the dictionary...
+// If still no luck, find the word with the same metaphone and the shortest Levenshtein distance.
+// If STILL no luck, remove the term from the search terms.
+
+// Use wordSorted to find the word to make sure it's spelled right. 
+// If the term is not in the dictionary, it's spelled wrong.
+/*$path = "./wordSorted.json";
+
+$json = file_get_contents($path);
+$dict = json_decode($json, TRUE);
+
+foreach($terms as $term) {
+    $matchIndex = binarySearchWord($dict, 0, count($dict) - 1, $term);
+    $response['matched'][] = $dict[$matchIndex]['word'];
+    //$response['matched'] = $dict[$matchIndex]->word;
+}*/
+
+
+// For terms that are spelled wrong, use metaphoneSorted to find any possible matches.
+// We want to find the word with the same metaphone and the shortest Levenshtein distance.
+
+
+
+
 // Communicate with the database
 try {
     if (!isset($pdo)) {
@@ -235,38 +257,55 @@ try {
     $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
     $site_id = $sql_res[0];
 
-    // Detect the success of pulling the site_id from the database.
-    //$response['found_site_id'] = true;
-
-    // Remove unnecessary characters and seperate phrase into seperate terms
-    $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
-    $response['searchPhrase'] = $phrase;
-    $terms = explode(' ', $phrase);
-    $response['searchTerms'] = $terms;
-
     // Create a new array of bins which will hold the relevance score for each page.
     $bins = new RelevanceBin();
 
     // Obtain results for each term in the search phrase
     foreach ($terms as $term) {
         // Search through keywords for all pages which contain a matching keyword.
-        $sql = 'SELECT page_id, dupe_count FROM keywords WHERE keyword = ? ORDER BY page_id DESC';
+        $sql = 'SELECT page_id, dupe_count FROM keywords_' . $term[0] . ' WHERE keyword = ? ORDER BY page_id DESC';
         $statement = $pdo->prepare($sql);
         $statement->execute([$term]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
-        $max = 0;
-        // Add up the relevance score for each page based on keyword occurances on the page.
-        foreach ($results as $result) {
-            $bins->add_bin($result['page_id'], $result['dupe_count']);
-            if ($result['dupe_count'] > $max) {
-                $max = $result['dupe_count'];
+        // If at least one result is found, then begin to generate relevance scores for each page with this keyword.
+        if (count($results) > 0) {
+            $max = 0;
+
+            // Add up the relevance score for each page based on keyword occurances on the page.
+            foreach ($results as $result) {
+                $bins->add_bin($result['page_id'], $result['dupe_count']);
+                if ($result['dupe_count'] > $max) {
+                    $max = $result['dupe_count'];
+                }
+            }
+
+            // Add the max dupe_count for this term to the max array in the RelevanceBin instance.
+            // We will use this to calculate relevance for each page later.
+            $bins->add_max($max);
+        }
+        else {
+            // If no results are found, this could indicate a mis-spelled word.
+            // Binary search the imported English dictionary for any matches.
+            $matchIndex = binarySearchWord($wordDict, 0, count($wordDict) - 1, $term);
+
+            if ($matchIndex !== -1) {
+                $response['matched'][] = $wordDict[$matchIndex]['word'];
+            }
+            else {
+                // If the binarySearch didn't find the word, then there has been a mis-spelling.
+                $suggestions = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
+
+                if (count($suggestions) > 0) {
+                    $response['suggestions'] = $suggestions;
+
+                    $suggestions_sorted = sortSuggestions($suggestions, $term);
+                    $response['suggestions_sorted'] = $suggestions_sorted;
+                }
+                
+                // If there are no suggestions for what the word can be, we must ignore the search term and continue on.
             }
         }
-
-        // Add the max dupe_count for this term to the max array in the RelevanceBin instance.
-        // We will use this to calculate relevance for each page later.
-        $bins->add_max($max);
     }
 
     // Sort the pages by their relevance score
@@ -401,8 +440,91 @@ function binarySearchWord($arr, $l, $h, $key) {
     return -1;
 } 
 
-// Get rid of a suffix at the end of a word.
-// Ex. Get rid of the 's' at the end of services.
-function removeSuffix($str) {
+// Input: arr is the array of metaphones
+//        l is low index
+//        h is high index
+//        key is the metaphone we're searching for
+// Output: Return an array of results.
+// Binary search for the first metaphone, then search around that first match for any more metaphones.
+function getAllMetaphones($arr, $l, $h, $key) { 
+    $results = []; // All found metaphones
+    $index = -1; // The index of the first matched metaphone.
 
+    // Peform a binary search.
+    while ($h >= $l) {
+        $mid = ceil($l + ($h - $l) / 2); 
+
+        // If the element is present at the middle itself 
+        if ($arr[$mid]['metaphone'] == $key) {
+            $results[] = $arr[floor($mid)]['word'];
+            $index = floor($mid); 
+            break;
+        }
+
+        // If element is smaller than mid, then 
+        // it can only be present in left subarray 
+        if ($arr[$mid]['metaphone'] > $key) {
+            $h = $mid - 1;
+        }
+        else {
+            // Else the element can only be present in right subarray 
+            $l = $mid + 1;
+        }
+    }
+
+    if ($index !== -1) {
+        // Check higher indices for more matches.
+        for ($i = $index + 1; $arr[$i]['metaphone'] == $key; $i++) {
+            $results[] = $arr[$i]['word'];
+        }
+
+        // Check lower indices for more matches.
+        for ($j = $index - 1; $arr[$j]['metaphone'] == $key; $j--) {
+            $results[] = $arr[$j]['word'];
+        }
+    }
+
+    return $results;
+} 
+
+// Input: Array obtained from getAllMetaphones()
+//        Search term
+// Output: Array sorted by closest match to furthest match.
+function sortSuggestions($suggestions, $key) {
+    $results = [];
+    foreach ($suggestions as $suggestion) {
+        $results[] = ['distance' => levenshtein($suggestion, $key), 'term' => $suggestion];
+    }
+
+    usort($results, function ($result1, $result2) {
+        return $result1['distance'] <=> $result2['distance'];
+    });
+
+    return $results;
 }
+
+// Input: A keyword string.
+//        A PDO instance.
+// Output: Boolean.
+// Determine whether or not a keyword is within the sites content.
+/*function findKeyword($keyword, $pdo) {
+    $sql = 'SELECT keyword FROM keywords_' . $keyword[0] . ' WHERE keyword = ?';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$keyword]);
+    $result = $statement->fetch();
+
+    // If $result contains ANYTHING, we know we've found a match and that the keyword exists.
+    if (count($result) > 0) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}*/
+
+//if (isset($keyword[1])) { // If the word is longer than 1 letter, then it can be considered a keyword.
+/*
+if (!isset($keyword[0]) || $keyword[0] === 'a' || $keyword[0] === 'i') {
+    return true;
+}
+*/

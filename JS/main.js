@@ -33,11 +33,17 @@ window.addEventListener("DOMContentLoaded", function() {
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
 
-        // Populate the results container with results.
-        populate(res, results);
-        pageBar.appendChild(createPageButtons(res));
-        setCurrentPage(res.page);
-        setTotalPages(res.totalPages);
+        if (res.length > 0) {
+          // Populate the results container with results.
+          populate(res, results);
+          pageBar.appendChild(createPageButtons(res));
+          setCurrentPage(res.page);
+          setTotalPages(res.totalPages);
+        }
+        else {
+          setCurrentPage(0);
+          setTotalPages(0);
+        }
       })
       .catch(err => {
         console.log("ERROR: ", err);
