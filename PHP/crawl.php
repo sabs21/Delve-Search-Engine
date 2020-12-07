@@ -350,10 +350,17 @@ try {
     $totalKeywords += count($pages[$i]->get_keywords());
   }
 
+  // Create a temporary table called keywords.
+  // This table will be used to send keywords to different tables based on what letter they start with.
+  // I.e., A keyword 'melon' will be sent to the keywords_m table.
+  $sql = 'CREATE TABLE `duda_search_dirty`.`#keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_count` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
+  $statement = $pdo->prepare($sql);
+  $statement->execute();
+  
   // KEYWORDS TABLE
-  // Add keywords for each page into database
+  // Add keywords for each page into the #keywords temporary table.
   $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO keywords (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+  $sql = 'INSERT INTO `#keywords` (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
   $statement = $pdo->prepare($sql);
   $placeholder = 1;
   for ($i = 0; $i < $totalPages; $i++) {
@@ -367,6 +374,20 @@ try {
       $placeholder += 4;
     }
   }
+  $statement->execute();
+
+  // Insert keywords into their respective tables based on the letter they start with.
+  for ($i = 0; $i < 26; $i++) {
+    $current_letter = chr(97 + $i); 
+    $table = 'keywords_' . $current_letter;
+    $sql = 'INSERT INTO keywords_' . $current_letter . ' SELECT * FROM `#keywords` WHERE Left(keyword, 1) = ?';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$current_letter]);
+  }
+
+  // Finally, DROP the #keywords table
+  $sql = 'DROP TABLE `duda_search_dirty`.`#keywords`';
+  $statement = $pdo->prepare($sql);
   $statement->execute();
 
   // Indicate that the keywords were inserted into the database successfully
@@ -491,8 +512,9 @@ function get_keywords_from_all($dom) {
   return $all_keywords;
 }
 
-// WIP, I just copied and renamed the get_keywords_from_tag function.
-// should not include header/footer content
+// Input: DOMDocument object
+// Output: String of content.
+// Return all content except for the footer/header.
 function get_all_content($dom) {
   $content_wrapper = $dom->getElementById("site_content");
   // Get and format the text
