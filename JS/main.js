@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", function() {
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
 
-        if (res.length > 0) {
+        if (res.results?.length > 0) {
           // Populate the results container with results.
           populate(res, results);
           pageBar.appendChild(createPageButtons(res));
