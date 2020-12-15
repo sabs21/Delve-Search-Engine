@@ -329,7 +329,7 @@ try {
 
     // Put all array keys (aka page_id's) into a separate array.
     $page_ids = array_keys($relevance_arr);
-    $response['misc'] = $page_ids;
+    //$response['misc'] = $page_ids;
 
     // SELECT * FROM contents WHERE page_id IN ('2901', '2911', '2906', '2921') AND site_id = 53
     /*foreach ($page_ids as $page_id) {
@@ -549,6 +549,9 @@ function sortSuggestions($suggestions, $key) {
     return $results;
 }
 
+// Input: Two Result objects
+// Output: Integer signifying whether A is less than, equal to, or greater than B
+// Compare Result A with Result B
 function resultSort($resA, $resB) {
     $a = $resA->get_relevance();
     $b = $resB->get_relevance();
