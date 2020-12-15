@@ -59,11 +59,17 @@ class Result {
     public $url;
     public $title;
     public $snippet;
+    public $relevence;
 
-    public function __construct($url, $title, $snippet) {
+    public function __construct($url, $title, $snippet, $relevence) {
         $this->url = $url;
         $this->title = $title;
         $this->snippet = $snippet;
+        $this->relevence = $relevence;
+    }
+
+    public function get_relevance() {
+        return $this->relevence;
     }
 }
 
@@ -161,6 +167,7 @@ $metaDict = json_decode($json, TRUE);
 
 // Use this array as a basic response object. May need something more in depth in the future.
 $response = [
+    'time_taken' => NULL,
     'searchPhrase' => $phrase,
     'searchTerms' => $terms,
     'results' => NULL,
@@ -257,15 +264,21 @@ try {
     $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
     $site_id = $sql_res[0];
 
+    // Obtain results based on the whole phrase
+    /*$sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$site_id]);
+    $contents = $statement->fetchAll(); // Returns an array of indexed and associative results.
+    */
     // Create a new array of bins which will hold the relevance score for each page.
     $bins = new RelevanceBin();
 
     // Obtain results for each term in the search phrase
     foreach ($terms as $term) {
-        // Search through keywords for all pages which contain a matching keyword.
-        $sql = 'SELECT page_id, dupe_count FROM keywords_' . $term[0] . ' WHERE keyword = ? ORDER BY page_id DESC';
+        // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
+        $sql = 'SELECT page_id, dupe_count FROM keywords_' . $term[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY page_id DESC';
         $statement = $pdo->prepare($sql);
-        $statement->execute([$term]);
+        $statement->execute([$term, $site_id]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
         // If at least one result is found, then begin to generate relevance scores for each page with this keyword.
@@ -311,14 +324,43 @@ try {
     // Sort the pages by their relevance score
     //$bins = $bins->get_bins();
     $relevance_arr = $bins->create_relevance_arr();
-    arsort($relevance_arr); // Sorted in descending order (most relevant to least relevant).
+    //arsort($relevance_arr); // Sorted in descending order (most relevant to least relevant).
     //$relevant_pages = $bins;
 
     // Put all array keys (aka page_id's) into a separate array.
     $page_ids = array_keys($relevance_arr);
+    $response['misc'] = $page_ids;
+
+    // SELECT * FROM contents WHERE page_id IN ('2901', '2911', '2906', '2921') AND site_id = 53
+    /*foreach ($page_ids as $page_id) {
+
+    }*/
+    // To comunicate with the database as few times as possible, 
+    // this SQL query gets filled with all of the page_id's that we need info for.
+    $pdo_str = create_pdo_placeholder_str(count($page_ids), 1);
+    $sql = 'SELECT page_id, path, title, description FROM pages WHERE page_id IN ' . $pdo_str;
+    $statement = $pdo->prepare($sql);
+    for ($i = 0; $i < count($page_ids); $i++) {
+        $statement->bindValue($i+1, $page_ids[$i], PDO::PARAM_INT);
+    }
+    $statement->execute();
+    $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
+    $response['misc'] = $results;
+
+    // Create a Result object for each search result found
+    $search_results = [];
+    for ($i = 0; $i < count($page_ids); $i++) {
+        $page_id = $results[$i]['page_id'];
+        $search_results[] = new Result($url . $results[$i]['path'], 
+                                       $results[$i]['title'], 
+                                       $results[$i]['description'], 
+                                       $relevance_arr[$page_id]);
+    }
+
+    usort($search_results, 'resultSort');
 
     // Grab pages from the database in the order of page relevance.
-    $search_results = [];
+    /*$search_results = [];
     foreach ($page_ids as $page_id) {
         $sql = 'SELECT path, title, description FROM pages WHERE page_id = ' . $page_id;
         $statement = $pdo->prepare($sql);
@@ -326,13 +368,17 @@ try {
         $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
 
         $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
-    }
+    }*/
 
     $response['relevance_arr'] = $relevance_arr;
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
     $response['results'] = $result_pages[$page_to_return];
+
+    // Monitor program performance using this timer
+    $end = round(microtime(true) * 1000);
+    $response['time_taken'] = $end - $begin;
     echo json_encode($response);
 } 
 catch (Exception $e) {
@@ -347,8 +393,8 @@ catch (Exception $e) {
 }
 
 // Monitor program performance using this timer
-$end = round(microtime(true) * 1000);
-$response['time_taken'] = $end - $begin;
+//$end = round(microtime(true) * 1000);
+//$response['time_taken'] = $end - $begin;
 
 // Send a response back to the client.
 //echo json_encode($response);
@@ -501,6 +547,16 @@ function sortSuggestions($suggestions, $key) {
     });
 
     return $results;
+}
+
+function resultSort($resA, $resB) {
+    $a = $resA->get_relevance();
+    $b = $resB->get_relevance();
+
+    if ($a === $b) {
+        return 0;
+    }
+    return ($a > $b) ? -1 : 1;
 }
 
 // Input: A keyword string.

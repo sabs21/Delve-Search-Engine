@@ -11,7 +11,7 @@ class Word {
 
     public function __construct($word, $meanings, $synonyms) {
         $this->word = strtolower($word);
-        $this->metaphone =  metaphone($word);
+        $this->metaphone = metaphone($word);
         $this->meanings = $meanings;
         $this->synonyms = $synonyms;
         $this->pos = NULL;
