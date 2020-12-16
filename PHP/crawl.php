@@ -101,22 +101,22 @@ class Page {
 }
 
 class Keyword {
-  protected $dupe_count = 1;
+  protected $dupe_total = 1;
   protected $keyword = '';
 
   // $keyword is a string.
-  // $dupe_count is an integer.
-  public function __construct($keyword, $dupe_count) {
+  // $dupe_total is an integer.
+  public function __construct($keyword, $dupe_total) {
     $this->keyword = $keyword;
-    $this->dupe_count = $dupe_count;
+    $this->dupe_total = $dupe_total;
   }
 
   public function get_keyword () {
     return $this->keyword;
   }
 
-  public function get_dupe_count () {
-    return $this->dupe_count;
+  public function get_dupe_total () {
+    return $this->dupe_total;
   }
 }
 
@@ -350,14 +350,14 @@ try {
   // Create a temporary table called keywords.
   // This table will be used to send keywords to different tables based on what letter they start with.
   // I.e., A keyword 'melon' will be sent to the keywords_m table.
-  $sql = 'CREATE TEMPORARY TABLE `duda_search_dirty`.`keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_count` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
+  $sql = 'CREATE TEMPORARY TABLE `duda_search_dirty`.`keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_total` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
   $statement = $pdo->prepare($sql);
   $statement->execute();
   
   // KEYWORDS TABLE
   // Add keywords for each page into the #keywords temporary table.
   $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO `keywords` (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+  $sql = 'INSERT INTO `keywords` (page_id, site_id, keyword, dupe_total) VALUES ' . $placeholder_str;
   $statement = $pdo->prepare($sql);
   $placeholder = 1;
   for ($i = 0; $i < $totalPages; $i++) {
@@ -367,7 +367,7 @@ try {
       $statement->bindValue($placeholder, $page_id, PDO::PARAM_INT);
       $statement->bindValue($placeholder+1, $site_id, PDO::PARAM_INT);
       $statement->bindValue($placeholder+2, $page_keywords[$j]->get_keyword(), PDO::PARAM_STR);
-      $statement->bindValue($placeholder+3, $page_keywords[$j]->get_dupe_count(), PDO::PARAM_INT);
+      $statement->bindValue($placeholder+3, $page_keywords[$j]->get_dupe_total(), PDO::PARAM_INT);
       $placeholder += 4;
     }
   }
@@ -565,7 +565,7 @@ function array_unique_monitor_dupes($arr) {
   $result_arr = [];
   $arr_len = count($arr) - 1;
   $create_new_obj = true;
-  $dupe_count = 1;
+  $dupe_total = 1;
 
   for ($i = 0; $i < $arr_len; $i++) {
     // Check if next entry is the same. If so, increment dupe counter
@@ -575,20 +575,20 @@ function array_unique_monitor_dupes($arr) {
       // If so then increment dupe count one last time then add that entry to the result array.
       if ($i === $arr_len - 1) {
         if ($arr[$i - 1] === $arr[$i]) {
-          $dupe_count++;
+          $dupe_total++;
         }
-        $result_arr[] = new Keyword($arr[$arr_len - 1], $dupe_count);
+        $result_arr[] = new Keyword($arr[$arr_len - 1], $dupe_total);
       }
       else {
-        $dupe_count++;
+        $dupe_total++;
       }
     }
     else {
       // If we are at the last index of the array, the last index will be compared with NULL.
       // The next keyword isn't a dupe, so set this flag true.
       $create_new_obj = true;
-      $result_arr[] = new Keyword($arr[$i - $dupe_count + 1], $dupe_count);
-      $dupe_count = 1;
+      $result_arr[] = new Keyword($arr[$i - $dupe_total + 1], $dupe_total);
+      $dupe_total = 1;
     }
   }
   return $result_arr;

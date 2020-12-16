@@ -14,7 +14,7 @@ set_time_limit(120);
 // Override PHP.ini so that errors do not display on browser.
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-//ini_set('display_errors', 1);
+//ini_set('display_errors', 0);
 
 ////////////////////////
 // CLASS DEFINITIONS //
@@ -58,82 +58,28 @@ class Phrase {
 }
 
 class Result {
+    public $page_id; // Unused for now
     public $url;
     public $title;
     public $snippet;
-    public $relevence;
+    //public $dupeTotals; // An array which holds every dupe_total for this given page
+    public $relevance;
 
-    public function __construct($url, $title, $snippet, $relevence) {
+    public function __construct($page_id, $url, $title = NULL, $snippet = NULL, $relevance = 0) {
+        $this->page_id = $page_id;
         $this->url = $url;
         $this->title = $title;
         $this->snippet = $snippet;
-        $this->relevence = $relevence;
+        //$this->dupeTotals = [];
+        $this->relevance = $relevance;
+    }
+
+    public function add_to_relevance($value) {
+        $this->relevance += $value;
     }
 
     public function get_relevance() {
-        return $this->relevence;
-    }
-}
-
-class RelevanceBin {
-    protected $bins;
-    protected $maximums; // Highest dupes for each term.
-    protected $relevance_arr;
-    
-    public function __construct() {
-        $this->bins = [];
-        $this->maximums = [];
-        $this->relevance_arr = [];
-    }
-
-    public function get_bins() {
-        return $this->bins;
-    }
-
-    // Each bin holds the relevancy score of a given page.
-    // If a bin exists for the given page_id, then add the new value to the existing value. 
-    // If a bin does not exist for the given page_id, create one and set its value.
-    public function add_bin($page_id, $value) {
-        /*if (!isset($this->bins[$page_id])) {
-            $this->bins[$page_id] = 0;
-        }*/
-        $this->bins[$page_id][] = $value;
-    }
-
-    // Store the highest dupe count of a given term.
-    // These maximums will be used to calculate an average of sorts
-    // This is STEP 1 of creating the relevance array.
-    public function add_max($max) {
-        $this->maximums[] = $max;
-    }
-
-    // Divide each bin with maximums to calculate the relevance of each page
-    // This is STEP 2 of creating the relevance array.
-    public function create_relevance_arr() {
-        $page_ids = array_keys($this->bins);
-
-        //$i = 0;
-        foreach($page_ids as $page_id) {
-            //foreach($this->maximums as $max) {
-                //$this->bins[$page_id][]
-            //}
-            $relevance = 0;
-            // The amount of bins each page contains is the same as the amount of search terms and is also the same as the amount of maximum dupe counts.
-            for ($i = 0; $i < count($this->bins[$page_id]); $i++) {
-                /*if (!isset($this->bins[$page_id]['relevance'])) {
-                    $this->bins[$page_id]['relevance'] = 0;
-                }*/
-                $relevance += ceil(($this->bins[$page_id][$i] / $this->maximums[$i]) * 100);
-            }
-            $this->relevance_arr[$page_id] = $relevance;
-            //$i += 1;
-        }
-
-        return $this->relevance_arr;
-    }
-
-    public function get_relevance_arr() {
-        return $this->relevance_arr;
+        return $this->relevance;
     }
 }
 
@@ -145,7 +91,7 @@ class RelevanceBin {
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
 $urlNoPath = $url;
-$phrase = json_decode($raw)->phrase;
+$phrase = trim(json_decode($raw)->phrase);
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
 
 // Remove unnecessary characters and seperate phrase into seperate terms
@@ -172,6 +118,7 @@ $json = file_get_contents($path);
 $metaDict = json_decode($json, TRUE);
 
 // Use this array as a basic response object. May need something more in depth in the future.
+// Prepares a response to identify errors and successes.
 $response = [
     'time_taken' => NULL,
     'searchPhrase' => $phrase,
@@ -180,28 +127,11 @@ $response = [
     'totalResults' => NULL,
     'totalPages' => NULL,
     'page' => $page_to_return + 1,
-    'relevance_arr' => NULL,
+    'relevance_scores' => NULL,
     'matched' => NULL,
     'suggestions' => NULL,
     'suggestions_sorted' => NULL
 ];
-
-// $response['misc'] = substr($url, 0, strlen($url) - 1);
-
-// Use this array as a basic response object. May need something more in depth in the future.
-// Prepares a response to identify errors and successes.
-/*$response = [
-  'time_taken' => 0,
-  'found_site_id' => false,
-  'search_phrase' => NULL,
-  'search_terms' => NULL,
-  //'bins' => NULL,
-  'search_results' => NULL,
-  //'ordered_by_relevance' => NULL,
-  'pdo_error' => NULL,
-  'db_error' => NULL,
-  'misc' => NULL
-];*/
 
 /////////////////////////////////
 // PREPARE TO SEARCH DATABASE //
@@ -229,33 +159,10 @@ catch(Exception $e) {
     $response['pdo_error'] = $e->getMessage();
 }
 
-///////////////////////////////////////////////
-// CHECK N' GUESS THE INTENDED SEARCH TERMS //
-/////////////////////////////////////////////
+/////////////////////////////
+// DATABASE COMMUNICATION //
+///////////////////////////
 
-// Search the the list of keywords from the database first and foremost!
-// If no luck, then search the dictionary...
-// If still no luck, find the word with the same metaphone and the shortest Levenshtein distance.
-// If STILL no luck, remove the term from the search terms.
-
-// Use wordSorted to find the word to make sure it's spelled right. 
-// If the term is not in the dictionary, it's spelled wrong.
-/*$path = "./wordSorted.json";
-
-$json = file_get_contents($path);
-$dict = json_decode($json, TRUE);
-
-foreach($terms as $term) {
-    $matchIndex = binarySearchWord($dict, 0, count($dict) - 1, $term);
-    $response['matched'][] = $dict[$matchIndex]['word'];
-    //$response['matched'] = $dict[$matchIndex]->word;
-}*/
-
-
-// For terms that are spelled wrong, use metaphoneSorted to find any possible matches.
-// We want to find the word with the same metaphone and the shortest Levenshtein distance.
-
-// Communicate with the database
 try {
     if (!isset($pdo)) {
         throw new Exception("PDO instance is not defined.");
@@ -269,34 +176,29 @@ try {
     $sql_res = $statement->fetch(); // Returns an array of *indexed and associative results. Indexed is preferred.
     $site_id = $sql_res['site_id']; // *Accessing indexes don't seem to work from the fetch() 
 
-    //$response['misc'] = $sql_res;
+    // Use relevance_scores array to incrementally tally each relevance score for each page.
+    $relevance_scores = [];
+
+    // best_suggestions contains the first suggestion found within the site content for each misspelled term. 
+    // This is  useful for normalizing any suggestions which replaced the original term.
+    $best_suggestions = [];
     
-    // Create a new array of bins which will hold the relevance score for each page.
-    $bins = new RelevanceBin();
+    // search_results contains all Results objects.
+    $search_results = [];
 
     // Obtain results for each term in the search phrase
     foreach ($terms as $term) {
         // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
-        $sql = 'SELECT page_id, dupe_count FROM keywords_' . $term[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY page_id DESC';
+        $sql = 'SELECT page_id, dupe_total FROM keywords_' . $term[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
         $statement = $pdo->prepare($sql);
         $statement->execute([$term, $site_id]);
         $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
-        // If at least one result is found, then begin to generate relevance scores for each page with this keyword.
+        // If at least one result is found, then mark this keyword as valid.
+        $isValidTerm = false;
+        $suggestions = [];
         if (count($results) > 0) {
-            $max = 0;
-
-            // Add up the relevance score for each page based on keyword occurances on the page.
-            foreach ($results as $result) {
-                $bins->add_bin($result['page_id'], $result['dupe_count']);
-                if ($result['dupe_count'] > $max) {
-                    $max = $result['dupe_count'];
-                }
-            }
-
-            // Add the max dupe_count for this term to the max array in the RelevanceBin instance.
-            // We will use this to calculate relevance for each page later.
-            $bins->add_max($max);
+            $isValidTerm = true;
         }
         else {
             // If no results are found, this could indicate a mis-spelled word.
@@ -304,20 +206,72 @@ try {
             $matchIndex = binarySearchWord($wordDict, 0, count($wordDict) - 1, $term);
 
             if ($matchIndex !== -1) {
+                // A result was found in the dictionary
                 $response['matched'][] = $wordDict[$matchIndex]['word'];
+                $isValidTerm = true;
+                // The dupe count for all pages is 0 for this term.
             }
             else {
                 // If the binarySearch didn't find the word, then there has been a mis-spelling.
-                $suggestions = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
+                $suggestions_unsorted = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
 
-                if (count($suggestions) > 0) {
-                    $response['suggestions'] = $suggestions;
+                if (count($suggestions_unsorted) > 0) {
+                    $response['suggestions'] = $suggestions_unsorted;
 
-                    $suggestions_sorted = sortSuggestions($suggestions, $term);
-                    $response['suggestions_sorted'] = $suggestions_sorted;
+                    $suggestions = sortSuggestions($suggestions, $term);
+                    $response['suggestions_sorted'] = $suggestions;
                 }
                 
                 // If there are no suggestions for what the word can be, we must ignore the search term and continue on.
+            }
+        }
+
+        // In case neither of these cases are true, move onto the next term and ignore this one.
+        if ($isValidTerm) {
+            $max = $results[0]['dupe_total'];
+
+            // Add up the relevance score for each page based on keyword occurances on the page.
+            foreach ($results as $result) {
+                $dupe_total = $result['dupe_total'];
+                $page_id = $result['page_id'];
+                // Increment the relevance scores of each page.
+                if (isset($relevance_scores[$page_id])) {
+                    $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
+                }
+                else {
+                    $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
+                }
+            }
+        }
+        else if (isset($suggestions[0])) {
+            // Attempt to find a suggestion which best matches what the user may have meant to type.
+            // If a suggestion is not found in the site's content, then move onto the next suggestion until we find a match in the content or run out of suggestions.
+            foreach ($suggestions as $suggestion) {
+                // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
+                $sql = 'SELECT page_id, dupe_total FROM keywords_' . $suggestion[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
+                $statement = $pdo->prepare($sql);
+                $statement->execute([$suggestion, $site_id]);
+                $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
+
+                if (count($results) > 0) {
+                    $max = $results[0]['dupe_total'];
+
+                    // Add up the relevance score for each page based on keyword occurances on the page.
+                    foreach ($results as $result) {
+                        $dupe_total = $result['dupe_total'];
+                        $page_id = $result['page_id'];
+                        // Increment the relevance scores of each page.
+                        if (isset($relevance_scores[$page_id])) {
+                            $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
+                        }
+                        else {
+                            $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
+                        }
+                    }
+
+                    $best_suggestions[] = $suggestion;
+                    $best_suggestions[$term] = $suggestion;
+                }
             }
         }
     }
@@ -332,21 +286,24 @@ try {
     //          How to increment the relevence score? $bins->add_bin($phraseHits['page_id'], $maxScore);
 
     // Obtain results based on the whole phrase
-    //$sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
-    //$statement = $pdo->prepare($sql);
-    //$statement->execute([$site_id]);
-    //$contents = $statement->fetchAll(); // Returns an array of indexed and associative results.
-    
+    $sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$site_id]);
+    $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
-    // Sort the pages by their relevance score
-    //$bins = $bins->get_bins();
-    $relevance_arr = $bins->create_relevance_arr();
-    //arsort($relevance_arr); // Sorted in descending order (most relevant to least relevant).
-    //$relevant_pages = $bins;
+    // Fill the phraseHits array with the indices of any search phrase matches within the content of each page.
+    $phraseHits = [];
+    foreach ($results as $result) {
+        // Case-insensitive search for the needle (phrase) in the haystack (content)
+        $exactMatchIndex = stripos($result['content'], $phrase);
+        if ($exactMatchIndex !== false) {
+            $relevance_scores[$page_id] += count($terms) * 100;
+            $phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
+        }
+    }
 
     // Put all array keys (aka page_id's) into a separate array.
-    $page_ids = array_keys($relevance_arr);
-    //$response['misc'] = $page_ids;
+    $page_ids = array_keys($relevance_scores);
 
     // SELECT * FROM contents WHERE page_id IN ('2901', '2911', '2906', '2921') AND site_id = 53
 
@@ -360,32 +317,22 @@ try {
     }
     $statement->execute();
     $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
-    $response['misc'] = $results;
 
     // Create a Result object for each search result found
-    $search_results = [];
-    for ($i = 0; $i < count($page_ids); $i++) {
+    //$search_results = [];
+    for ($i = 0; $i < count($results); $i++) {
         $page_id = $results[$i]['page_id'];
-        $search_results[] = new Result($urlNoPath . $results[$i]['path'], 
+        $search_results[] = new Result($results[$i]['page_id'],
+                                       $urlNoPath . $results[$i]['path'], 
                                        $results[$i]['title'], 
                                        $results[$i]['description'], 
-                                       $relevance_arr[$page_id]);
+                                       $relevance_scores[$page_id]);
     }
 
+    // Sort the pages by their relevance score
     usort($search_results, 'resultSort');
 
-    // Grab pages from the database in the order of page relevance.
-    //$search_results = [];
-    //foreach ($page_ids as $page_id) {
-    //    $sql = 'SELECT path, title, description FROM pages WHERE page_id = ' . $page_id;
-    //    $statement = $pdo->prepare($sql);
-    //    $statement->execute();
-    //    $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-    //
-    //    $search_results[] = new Result($urlNoPath . $results[0], $results[1], $results[2]);
-    //}
-
-    $response['relevance_arr'] = $relevance_arr;
+    $response['relevance_scores'] = $relevance_scores;
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
