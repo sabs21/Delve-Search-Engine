@@ -144,6 +144,7 @@ class RelevanceBin {
 // Get data from the POST sent from the fetch API
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
+$urlNoPath = $url;
 $phrase = json_decode($raw)->phrase;
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
 
@@ -152,9 +153,12 @@ $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => fal
 $terms = explode(' ', $phrase);
 
 // Format the url which was recieved so that it does not end in '/'
-if ($url[strlen($url) - 1] !== '/') {
-    //$url = substr($url, 0, strlen($url) - 1);
-    $url .= '/';
+if ($url[strlen($url) - 1] === '/') {
+    $urlNoPath = substr($url, 0, strlen($url) - 1);
+    //$url .= '/';
+}
+else {
+    $url .= '/'; 
 }
 
 // Import English dictionary data to check and correct mis-spellings
@@ -181,6 +185,8 @@ $response = [
     'suggestions' => NULL,
     'suggestions_sorted' => NULL
 ];
+
+// $response['misc'] = substr($url, 0, strlen($url) - 1);
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -260,15 +266,11 @@ try {
     $sql = 'SELECT site_id FROM sites WHERE url = ?';
     $statement = $pdo->prepare($sql);
     $statement->execute([$url]);
-    $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-    $site_id = $sql_res[0];
+    $sql_res = $statement->fetch(); // Returns an array of *indexed and associative results. Indexed is preferred.
+    $site_id = $sql_res['site_id']; // *Accessing indexes don't seem to work from the fetch() 
 
-    // Obtain results based on the whole phrase
-    /*$sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$site_id]);
-    $contents = $statement->fetchAll(); // Returns an array of indexed and associative results.
-    */
+    //$response['misc'] = $sql_res;
+    
     // Create a new array of bins which will hold the relevance score for each page.
     $bins = new RelevanceBin();
 
@@ -320,6 +322,22 @@ try {
         }
     }
 
+    // Find all contents which contain the search phrase here. This is the algorithm:
+    // Store the page_id's and index of the phrase in the content inside an array called phraseHits.
+    // Next, iterate through the page_id and first occurance array. 
+    // On each iteration... 
+    //      Grab 70 characters of text behind and after the search phrase.
+    //      Increment the relevence score by the maximum score possible.
+    //          What's the max score possible? Multiply the length of the search terms array by 100.
+    //          How to increment the relevence score? $bins->add_bin($phraseHits['page_id'], $maxScore);
+
+    // Obtain results based on the whole phrase
+    //$sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
+    //$statement = $pdo->prepare($sql);
+    //$statement->execute([$site_id]);
+    //$contents = $statement->fetchAll(); // Returns an array of indexed and associative results.
+    
+
     // Sort the pages by their relevance score
     //$bins = $bins->get_bins();
     $relevance_arr = $bins->create_relevance_arr();
@@ -331,9 +349,7 @@ try {
     //$response['misc'] = $page_ids;
 
     // SELECT * FROM contents WHERE page_id IN ('2901', '2911', '2906', '2921') AND site_id = 53
-    /*foreach ($page_ids as $page_id) {
 
-    }*/
     // To comunicate with the database as few times as possible, 
     // this SQL query gets filled with all of the page_id's that we need info for.
     $pdo_str = create_pdo_placeholder_str(count($page_ids), 1);
@@ -350,7 +366,7 @@ try {
     $search_results = [];
     for ($i = 0; $i < count($page_ids); $i++) {
         $page_id = $results[$i]['page_id'];
-        $search_results[] = new Result($url . $results[$i]['path'], 
+        $search_results[] = new Result($urlNoPath . $results[$i]['path'], 
                                        $results[$i]['title'], 
                                        $results[$i]['description'], 
                                        $relevance_arr[$page_id]);
@@ -359,15 +375,15 @@ try {
     usort($search_results, 'resultSort');
 
     // Grab pages from the database in the order of page relevance.
-    /*$search_results = [];
-    foreach ($page_ids as $page_id) {
-        $sql = 'SELECT path, title, description FROM pages WHERE page_id = ' . $page_id;
-        $statement = $pdo->prepare($sql);
-        $statement->execute();
-        $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
-
-        $search_results[] = new Result($url . $results[0], $results[1], $results[2]);
-    }*/
+    //$search_results = [];
+    //foreach ($page_ids as $page_id) {
+    //    $sql = 'SELECT path, title, description FROM pages WHERE page_id = ' . $page_id;
+    //    $statement = $pdo->prepare($sql);
+    //    $statement->execute();
+    //    $results = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
+    //
+    //    $search_results[] = new Result($urlNoPath . $results[0], $results[1], $results[2]);
+    //}
 
     $response['relevance_arr'] = $relevance_arr;
     $response['totalResults'] = count($search_results);
