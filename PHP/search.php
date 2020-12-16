@@ -12,7 +12,9 @@ $begin = round(microtime(true) * 1000);
 set_time_limit(120);
 
 // Override PHP.ini so that errors do not display on browser.
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+//ini_set('display_errors', 1);
 
 ////////////////////////
 // CLASS DEFINITIONS //
@@ -247,9 +249,6 @@ foreach($terms as $term) {
 // For terms that are spelled wrong, use metaphoneSorted to find any possible matches.
 // We want to find the word with the same metaphone and the shortest Levenshtein distance.
 
-
-
-
 // Communicate with the database
 try {
     if (!isset($pdo)) {
@@ -375,11 +374,6 @@ try {
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
     $response['results'] = $result_pages[$page_to_return];
-
-    // Monitor program performance using this timer
-    $end = round(microtime(true) * 1000);
-    $response['time_taken'] = $end - $begin;
-    echo json_encode($response);
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
@@ -393,11 +387,11 @@ catch (Exception $e) {
 }
 
 // Monitor program performance using this timer
-//$end = round(microtime(true) * 1000);
-//$response['time_taken'] = $end - $begin;
+$end = round(microtime(true) * 1000);
+$response['time_taken'] = $end - $begin;
 
 // Send a response back to the client.
-//echo json_encode($response);
+echo json_encode($response);
 
 // Input: String
 // Output: String containing only letters and numbers (ASCII)

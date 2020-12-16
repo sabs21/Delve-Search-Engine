@@ -296,9 +296,6 @@ try {
   $sql = 'DELETE FROM `sites` WHERE url = ?';
   $statement = $pdo->prepare($sql);
   $statement->execute([$urls[0]]);
-  $pdo->commit();
-
-  $pdo->beginTransaction();
 
   // SITES TABLE
   // Inserts a new site into the database
@@ -309,7 +306,7 @@ try {
 
   // Log the success of the site insertion
   $response['inserted_into_sites'] = true;
-
+  
   // SITES TABLE
   // Grab relevant site_id from recent call
   $sql = 'SELECT site_id FROM sites WHERE url = ?';
@@ -320,7 +317,7 @@ try {
 
   // Log the success of the site_id selection
   $response['found_site_id'] = true;
-
+  
   // PAGES TABLE
   // Inserts all new pages into the database.
   $pdo_str = create_pdo_placeholder_str(4, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
@@ -353,14 +350,14 @@ try {
   // Create a temporary table called keywords.
   // This table will be used to send keywords to different tables based on what letter they start with.
   // I.e., A keyword 'melon' will be sent to the keywords_m table.
-  $sql = 'CREATE TABLE `duda_search_dirty`.`#keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_count` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
+  $sql = 'CREATE TEMPORARY TABLE `duda_search_dirty`.`keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_count` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
   $statement = $pdo->prepare($sql);
   $statement->execute();
   
   // KEYWORDS TABLE
   // Add keywords for each page into the #keywords temporary table.
   $placeholder_str = create_pdo_placeholder_str(4, $totalKeywords); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO `#keywords` (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
+  $sql = 'INSERT INTO `keywords` (page_id, site_id, keyword, dupe_count) VALUES ' . $placeholder_str;
   $statement = $pdo->prepare($sql);
   $placeholder = 1;
   for ($i = 0; $i < $totalPages; $i++) {
@@ -380,15 +377,10 @@ try {
   for ($i = 0; $i < 26; $i++) {
     $current_letter = chr(97 + $i); 
     $table = 'keywords_' . $current_letter;
-    $sql = 'INSERT INTO keywords_' . $current_letter . ' SELECT * FROM `#keywords` WHERE Left(keyword, 1) = ?';
+    $sql = 'INSERT INTO keywords_' . $current_letter . ' SELECT * FROM `keywords` WHERE Left(keyword, 1) = ?';
     $statement = $pdo->prepare($sql);
     $statement->execute([$current_letter]);
   }
-
-  // Finally, DROP the #keywords table
-  $sql = 'DROP TABLE `duda_search_dirty`.`#keywords`';
-  $statement = $pdo->prepare($sql);
-  $statement->execute();
 
   // Indicate that the keywords were inserted into the database successfully
   $response['inserted_into_keywords'] = true;
@@ -409,19 +401,13 @@ try {
   $response['inserted_into_contents'] = true;
 
   $pdo->commit();
-
-  //echo "first page id: " . $firstPageId . "\n";
-  //echo "last page id: " . $lastPageId;
-  //echo "<pre>";
-  //echo print_r($pages);
-  //echo "</pre>";
 } catch (Exception $e) {
   // One of our database queries have failed.
   // Print out the error message.
   //echo $e->getMessage();
   $response['db_error'] = $e->getMessage();
   // Rollback the transaction.
-  if (isset($pdo)) {
+  if (isset($pdo) && $pdo->inTransaction()) {
     $pdo->rollBack();
   }
 }
