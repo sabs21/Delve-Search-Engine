@@ -20,43 +20,6 @@ ini_set('display_errors', 1);
 // CLASS DEFINITIONS //
 //////////////////////
 
-class TermDistance {
-    public $term;
-    public $distance;
-
-    public function __construct($term, $distance) {
-        $this->term = $term;
-        $this->distance = $distance;
-    }
-}
-
-// This contains the search phrase typed by the user and the url searched from.
-class Phrase {
-    protected $phrase;
-    protected $url;
-
-    public function __construct($phrase, $url) {
-        $this->phrase = $phrase;
-        $this->url = $url;
-    }
-
-    public function get_phrase() {
-        return $this->phrase;
-    }
-
-    public function set_phrase($new_phrase) {
-        $this->phrase = $new_phrase;
-    }
-
-    public function get_url() {
-        return $this->url;
-    }
-
-    public function set_url($new_url) {
-        $this->url = $new_url;
-    }
-}
-
 class Result {
     public $page_id; // Unused for now
     public $url;
@@ -182,7 +145,7 @@ try {
     // best_suggestions contains the first suggestion found within the site content for each misspelled term. 
     // This is  useful for normalizing any suggestions which replaced the original term.
     $best_suggestions = [];
-    
+
     // search_results contains all Results objects.
     $search_results = [];
 
