@@ -20,6 +20,157 @@ ini_set('display_errors', 1);
 // CLASS DEFINITIONS //
 //////////////////////
 
+class Dictionary {
+    public $dict;
+
+    public function __construct($path) {
+        $json = file_get_contents($path);
+        $this->dict = json_decode($json, TRUE);
+    }
+
+    protected function get_dict() {
+        return $this->dict;
+    }
+
+    public function word_at($index) {
+        return $this->dict[$index]['word'];
+    }
+
+    public function metaphone_at($index) {
+        return $this->dict[$index]['metaphone'];
+    }
+
+    public function length() {
+        return count($this->dict);
+    }
+
+    public function indices_to_words($arr) {
+        $result = [];
+
+        for ($i = 0; $i < count($arr); $i++) {
+            $result[$i] = $this->dict[$arr[$i]]['word'];
+        }
+
+        return $result;
+    }
+
+    public function indices_to_metaphones($arr) {
+        $result = [];
+
+        for ($i = 0; $i < count($arr); $i++) {
+            $result[$i] = $this->dict[$arr[$i]]['metaphone'];
+        }
+
+        return $result;
+    }
+}
+
+// WordDictionary implies a dictionary which is sorted alphabetically by word
+class WordDictionary extends Dictionary {
+    public function __construct($path) {
+        parent::__construct($path);
+    }
+
+    // Input: l is low index
+    //        h is high index
+    //        key is the word we're searching for
+    // Output: Index of the located word in the given array (arr)
+    // Perform a binary search for a given term based on a word.
+    public function search($key) {
+        //$arr = parent::get_dict();
+        $l = 0;
+        $h = parent::length();
+
+        while ($h >= $l) {
+            $mid = ceil($l + ($h - $l) / 2); 
+    
+            // If the element is present at the middle itself 
+            if (parent::word_at($mid) == $key) {
+                return floor($mid); 
+            }
+    
+            // If element is smaller than mid, then 
+            // it can only be present in left subarray 
+            if (parent::word_at($mid) > $key) {
+                $h = $mid - 1;
+            }
+            else {
+                // Else the element can only be present in right subarray 
+                $l = $mid + 1;
+            }
+        }
+    
+        // We reach here when element is not present in array 
+        return -1;
+    }
+
+    /*public function word_at($index) {
+        //return $this->dict[$index]['word'];
+        return parent::word_at($index);
+    }*/
+}
+
+// MetaphoneDictionary implies a dictionary which is sorted alphabetically by metaphone
+class MetaphoneDictionary extends Dictionary {
+    public function __construct($path) {
+        parent::__construct($path);
+    }
+
+    // Input: l is low index
+    //        h is high index
+    //        key is the word we're searching for
+    // Output: Index of the located word in the given array (arr)
+    // Perform a binary search for a given term based on a metaphone.
+    public function search($key) {
+        //$arr = parent::get_dict();
+        $l = 0;
+        $h = parent::length();
+
+        while ($h >= $l) {
+            $mid = ceil($l + ($h - $l) / 2); 
+    
+            // If the element is present at the middle itself 
+            if (parent::metaphone_at($mid) == $key) {
+                return floor($mid); 
+            }
+    
+            // If element is smaller than mid, then 
+            // it can only be present in left subarray 
+            if (parent::metaphone_at($mid) > $key) {
+                $h = $mid - 1;
+            }
+            else {
+                // Else the element can only be present in right subarray 
+                $l = $mid + 1;
+            }
+        }
+    
+        // We reach here when element is not present in array 
+        return -1;
+    }
+
+    // Input: anchor is the index of a metaphone which we want to find more of around it.
+    // Output: Array of indices that contain matching metaphones in the dictionary.
+    // For the metaphone sorted dictionaries
+    // Returns an array of indices of words which contain the same metaphone as the word at the given index
+    public function metaphone_walk($anchor) {
+        $results = [ $anchor ];
+        $key = parent::metaphone_at($anchor);
+
+        // Check higher indices for more matches.
+        for ($i = $anchor + 1; parent::metaphone_at($i) == $key; $i++) {
+            $results[] = $i; //parent::word_at($i);
+        }
+
+        // Check lower indices for more matches.
+        for ($j = $anchor - 1; parent::metaphone_at($j) == $key; $j--) {
+            $results[] = $j; //parent::word_at($j);
+        }
+    
+        return $results;
+    }
+}
+
 class Result {
     public $page_id; // Unused for now
     public $url;
@@ -71,14 +222,17 @@ else {
 }
 
 // Import English dictionary data to check and correct mis-spellings
-$path = "./wordSorted.json";
+/*$path = "./wordSorted.json";
 $json = file_get_contents($path);
 $wordDict = json_decode($json, TRUE);
 
 // Import metaphone dictionary to find potential mis-spelling corrections
 $path = "./metaphoneSorted.json";
 $json = file_get_contents($path);
-$metaDict = json_decode($json, TRUE);
+$metaDict = json_decode($json, TRUE);*/
+
+$word_dict = new WordDictionary("./wordSorted.json");
+$meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -166,23 +320,27 @@ try {
         else {
             // If no results are found, this could indicate a mis-spelled word.
             // Binary search the imported English dictionary for any matches.
-            $matchIndex = binarySearchWord($wordDict, 0, count($wordDict) - 1, $term);
+            $matchIndex = $word_dict->search($term); //binarySearchWord($wordDict, 0, count($wordDict) - 1, $term);
 
             if ($matchIndex !== -1) {
                 // A result was found in the dictionary
-                $response['matched'][] = $wordDict[$matchIndex]['word'];
+                $response['matched'][] = $word_dict->word_at($matchIndex); //$wordDict[$matchIndex]['word'];
                 $isValidTerm = true;
                 // The dupe count for all pages is 0 for this term.
             }
             else {
                 // If the binarySearch didn't find the word, then there has been a mis-spelling.
-                $suggestions_unsorted = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
+                $matchIndex = $meta_dict->search(metaphone($term));
+                $suggestion_indices = $meta_dict->metaphone_walk($matchIndex);
+                $suggestions = $meta_dict->indices_to_words($suggestion_indices);
 
-                if (count($suggestions_unsorted) > 0) {
-                    $response['suggestions'] = $suggestions_unsorted;
+                //$suggestions_unsorted = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
+
+                if (count($suggestions) > 0) {
+                    $response['suggestions'] = $suggestions; // Before the suggestions got sorted
 
                     $suggestions = sortSuggestions($suggestions, $term);
-                    $response['suggestions_sorted'] = $suggestions;
+                    $response['suggestions_sorted'] = $suggestions; // After the suggestions got sorted
                 }
                 
                 // If there are no suggestions for what the word can be, we must ignore the search term and continue on.
@@ -211,9 +369,9 @@ try {
             // If a suggestion is not found in the site's content, then move onto the next suggestion until we find a match in the content or run out of suggestions.
             foreach ($suggestions as $suggestion) {
                 // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
-                $sql = 'SELECT page_id, dupe_total FROM keywords_' . $suggestion[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
+                $sql = 'SELECT page_id, dupe_total FROM keywords_' . $suggestion['term'][0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
                 $statement = $pdo->prepare($sql);
-                $statement->execute([$suggestion, $site_id]);
+                $statement->execute([$suggestion['term'], $site_id]);
                 $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
                 if (count($results) > 0) {
@@ -225,10 +383,10 @@ try {
                         $page_id = $result['page_id'];
                         // Increment the relevance scores of each page.
                         if (isset($relevance_scores[$page_id])) {
-                            $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
+                            $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
                         }
                         else {
-                            $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
+                            $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
                         }
                     }
 
@@ -236,6 +394,7 @@ try {
                     $best_suggestions[$term] = $suggestion;
                 }
             }
+            $response['best_suggestions'] = $best_suggestions;
         }
     }
 
@@ -375,83 +534,6 @@ function create_pdo_placeholder_str($total_placeholders, $total_values) {
   
     return $pdo_str;
 }
-
-// Input: arr is the array of words
-//        l is low index
-//        h is high index
-//        key is the word we're searching for
-// Output: Index of the located word in the given array (arr)
-// For checking spelling and search terms
-function binarySearchWord($arr, $l, $h, $key) { 
-    while ($h >= $l) {
-        $mid = ceil($l + ($h - $l) / 2); 
-
-        // If the element is present at the middle itself 
-        if ($arr[$mid]['word'] == $key) {
-            return floor($mid); 
-        }
-
-        // If element is smaller than mid, then 
-        // it can only be present in left subarray 
-        if ($arr[$mid]['word'] > $key) {
-            $h = $mid - 1;
-        }
-        else {
-            // Else the element can only be present in right subarray 
-            $l = $mid + 1;
-        }
-    }
-
-    // We reach here when element is not present in array 
-    return -1;
-} 
-
-// Input: arr is the array of metaphones
-//        l is low index
-//        h is high index
-//        key is the metaphone we're searching for
-// Output: Return an array of results.
-// Binary search for the first metaphone, then search around that first match for any more metaphones.
-function getAllMetaphones($arr, $l, $h, $key) { 
-    $results = []; // All found metaphones
-    $index = -1; // The index of the first matched metaphone.
-
-    // Peform a binary search.
-    while ($h >= $l) {
-        $mid = ceil($l + ($h - $l) / 2); 
-
-        // If the element is present at the middle itself 
-        if ($arr[$mid]['metaphone'] == $key) {
-            $results[] = $arr[floor($mid)]['word'];
-            $index = floor($mid); 
-            break;
-        }
-
-        // If element is smaller than mid, then 
-        // it can only be present in left subarray 
-        if ($arr[$mid]['metaphone'] > $key) {
-            $h = $mid - 1;
-        }
-        else {
-            // Else the element can only be present in right subarray 
-            $l = $mid + 1;
-        }
-    }
-
-    if ($index !== -1) {
-        // Check higher indices for more matches.
-        for ($i = $index + 1; $arr[$i]['metaphone'] == $key; $i++) {
-            $results[] = $arr[$i]['word'];
-        }
-
-        // Check lower indices for more matches.
-        for ($j = $index - 1; $arr[$j]['metaphone'] == $key; $j--) {
-            $results[] = $arr[$j]['word'];
-        }
-    }
-
-    return $results;
-} 
 
 // Input: Array obtained from getAllMetaphones()
 //        Search term
