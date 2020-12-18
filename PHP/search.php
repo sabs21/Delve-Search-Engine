@@ -298,10 +298,88 @@ try {
 
     // best_suggestions contains the first suggestion found within the site content for each misspelled term. 
     // This is  useful for normalizing any suggestions which replaced the original term.
-    $best_suggestions = [];
+    //$best_suggestions = [];
 
     // search_results contains all Results objects.
     $search_results = [];
+
+    // Contains all possible keywords that should be searched within the database.
+    $keywords = [];
+
+    // Fill the keywords array with all possible keywords
+    foreach ($terms as $term) {
+        // Loop to check if each term is english
+        // Check if the word is english to check and see if we need to generate suggestions.
+        $word_match = $word_dict->search($term);
+        $isEnglish = $word_match !== -1;
+
+        // Then build up the keywords array to generate a large sql query
+        if (!$isEnglish) {
+            // Formulate the suggestions array, 
+            // Then put suggestions into keywords array.
+            $meta_match = $meta_dict->search(metaphone($term));
+            $suggestion_indices = $meta_dict->metaphone_walk($meta_match);
+            $suggestions = $meta_dict->indices_to_words($suggestion_indices);
+
+            foreach ($suggestions as $suggestion) {
+                $keywords[] = $suggestion;
+            }
+        } else {
+            $keywords[] = $term;
+        }
+    }
+
+    sort($keywords);
+
+    //$response['keywords_arr'] = $keywords;
+
+    // Find all first letters which are used throughout all the keywords.
+    // This array will also be useful for detecting the first occurence of a keyword in the sql query results.
+    // Empty the array as you go so that you know you're at the first occurence when the letter still exists within the array.
+    $keyword_sets = [];
+    $total = 0; // total refers to the total keywords with the same first letter
+    $first_letter = $keywords[0][0];
+    foreach ($keywords as $keyword) {
+        // Look for any change in first letter since the last iteration.
+        // If there has been a change, reset the total counter.
+        if ($keyword[0] === $first_letter) {
+            $total += 1;
+            //$unique_first_letters[] = $keyword[0];
+        }
+        else {
+            $keyword_sets[] = ['first_letter' => $first_letter, 'total' => $total];
+            $first_letter = $keyword[0];
+            $total = 1;
+        }
+    }
+
+    // Store the last keyword_set.
+    $keyword_sets[] = ['first_letter' => $first_letter, 'total' => $total];
+
+    //$response['keyword_sets'] = $keyword_sets;
+
+    // Generate the sql query
+    $sql = '';
+    // A keyword_set is a group of keywords who share the same first letter.
+    foreach ($keyword_sets as $keyword_set) {
+        $pdo_str = create_pdo_placeholder_str($keyword_set['total'], 1);
+        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $keyword_set['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
+    }
+    // Remove the extra 'union ALL' from the end of the SQL string and replace it with an ORDER BY clause
+    $sql = substr($sql, 0, -10);
+    $sql .= 'ORDER BY dupe_total DESC';
+
+    $response['sql_query'] = $sql;
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute($keywords);
+    $results = $statement->fetchAll();
+
+    $response['mass_query_results'] = $results;
+
+
+    // $pdo_str = create_pdo_placeholder_str(count($keywords), 1);
+    // $sql = 'SELECT page_id, dupe_total FROM keywords_' . $keywords[0][0] . ' WHERE keyword IN ' . $pdo_str . ' AND site_id = ? ORDER BY dupe_total DESC'
 
     // Obtain results for each term in the search phrase
     foreach ($terms as $term) {
@@ -390,11 +468,11 @@ try {
                         }
                     }
 
-                    $best_suggestions[] = $suggestion;
-                    $best_suggestions[$term] = $suggestion;
+                    //$best_suggestions[] = $suggestion;
+                    //$best_suggestions[$term] = $suggestion;
                 }
             }
-            $response['best_suggestions'] = $best_suggestions;
+           // $response['best_suggestions'] = $best_suggestions;
         }
     }
 
