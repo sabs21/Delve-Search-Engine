@@ -171,6 +171,85 @@ class MetaphoneDictionary extends Dictionary {
     }
 }
 
+// Consider replacing relevance array with a ScoreKeeper class.
+class ScoreKeeper {
+    protected $scores;
+
+    public function __construct() {
+        $this->scores = [];
+    }
+
+    public function add_to_score($score, $page_id) {
+        if (isset($this->scores[$page_id])) {
+            $this->scores[$page_id] += $score;
+        }
+        else {
+            $this->scores[$page_id] = $score;
+        }
+    }
+
+    public function get_score($page_id) {
+        return $this->scores[$page_id];
+    }
+
+    public function get_all_scores() {
+        return $this->scores;
+    }
+}
+
+class Keyword {
+    protected $original; // Original term that this keyword references.
+    //protected $pages_found;
+    protected $keyword;
+    protected $is_suggestion;
+    protected $max; // Maximum dupe_totals of this keyword in the database.
+
+    public function __construct($original, $suggested = NULL) {
+        $this->original = $original;
+        $this->max = NULL;
+        //$this->pages_found = [];
+        if (isset($suggested)) {
+            $this->keyword = $suggested;
+            $this->is_suggestion = true;
+        }
+        else {
+            $this->keyword = $original;
+            $this->is_suggestion = false;
+        }
+    }
+
+    function get_original() {
+        return $this->original;
+    }
+
+    function get_keyword() {
+        return $this->keyword;
+    }
+
+    function is_suggestion() {
+        return $this->is_suggestion;
+    }
+
+    function get_max() {
+        return $this->max;
+    }
+
+    function set_max($new_max) {
+        $this->max = $new_max;
+    }
+
+    // If the max is set, output a relevance score.
+    // If the max is not set, output 0;
+    function relevance($dupe_total) {
+        if (isset($this->max)) {
+            return ceil(($dupe_total / $this->max) * 100);
+        }
+        else {
+            return 0;
+        }
+    }
+}
+
 class Result {
     public $page_id; // Unused for now
     public $url;
@@ -222,16 +301,8 @@ else {
 }
 
 // Import English dictionary data to check and correct mis-spellings
-/*$path = "./wordSorted.json";
-$json = file_get_contents($path);
-$wordDict = json_decode($json, TRUE);
-
-// Import metaphone dictionary to find potential mis-spelling corrections
-$path = "./metaphoneSorted.json";
-$json = file_get_contents($path);
-$metaDict = json_decode($json, TRUE);*/
-
 $word_dict = new WordDictionary("./wordSorted.json");
+// Import metaphone dictionary to find potential mis-spelling corrections
 $meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 
 // Use this array as a basic response object. May need something more in depth in the future.
@@ -303,16 +374,6 @@ try {
         throw new Exception("Site not found in database.");
     }
 
-    // Use relevance_scores array to incrementally tally each relevance score for each page.
-    $relevance_scores = [];
-
-    // best_suggestions contains the first suggestion found within the site content for each misspelled term. 
-    // This is  useful for normalizing any suggestions which replaced the original term.
-    //$best_suggestions = [];
-
-    // search_results contains all Results objects.
-    $search_results = [];
-
     // Contains both keywords and suggestions which will be searched within the database.
     $keywords = [];
 
@@ -332,157 +393,80 @@ try {
             $suggestions = $meta_dict->indices_to_words($suggestion_indices);
 
             foreach ($suggestions as $suggestion) {
-                $keywords[] = $suggestion;
+                $keywords[] = new Keyword($term, $suggestion);
             }
-        } else {
-            $keywords[] = $term;
+        } 
+        else {
+            $keywords[] = new Keyword($term);
         }
     }
 
-    sort($keywords);
+    usort($keywords, 'nat_keyword_cmp');
 
-    //$response['keywords_arr'] = $keywords;
-
-    // Find all first letters which are used throughout all the keywords.
-    // This array will also be useful for detecting the first occurence of a keyword in the sql query results.
-    // Empty the array as you go so that you know you're at the first occurence when the letter still exists within the array.
-    $keyword_sets = [];
+    // Tally each group of keywords with the same first letter
+    // Used to generate a big keyword search query
+    $groups = [];
     $total = 0; // total refers to the total keywords with the same first letter
-    $first_letter = $keywords[0][0];
+    $first_letter = $keywords[0]->get_keyword()[0];
     foreach ($keywords as $keyword) {
+        $keyword = $keyword->get_keyword();
         // Look for any change in first letter since the last iteration.
         // If there has been a change, reset the total counter.
         if ($keyword[0] === $first_letter) {
             $total += 1;
-            //$unique_first_letters[] = $keyword[0];
         }
         else {
-            $keyword_sets[] = ['first_letter' => $first_letter, 'total' => $total];
+            $groups[] = ['first_letter' => $first_letter, 'total' => $total];
             $first_letter = $keyword[0];
             $total = 1;
         }
     }
 
     // Store the last keyword_set.
-    $keyword_sets[] = ['first_letter' => $first_letter, 'total' => $total];
+    $groups[] = ['first_letter' => $first_letter, 'total' => $total];
 
-    //$response['keyword_sets'] = $keyword_sets;
+    //$response['groups'] = $groups;
 
     // Generate the sql query
     $sql = '';
     // A keyword_set is a group of keywords who share the same first letter.
-    foreach ($keyword_sets as $keyword_set) {
-        $pdo_str = create_pdo_placeholder_str($keyword_set['total'], 1);
-        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $keyword_set['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
+    foreach ($groups as $group) {
+        $pdo_str = create_pdo_placeholder_str($group['total'], 1);
+        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $group['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
     }
     // Remove the extra 'union ALL' from the end of the SQL string and replace it with an ORDER BY clause
     $sql = substr($sql, 0, -10);
     $sql .= 'ORDER BY dupe_total DESC';
 
-    $response['sql_query'] = $sql;
-
     $statement = $pdo->prepare($sql);
-    $statement->execute($keywords);
+    //$response['sql_query'] = $sql;
+    // Since we cannot use PDO to directly execute an array of objects,
+    // we use this for loop to solve that issue.
+    for ($i = 0; $i < count($keywords); $i++) {
+        $statement->bindValue($i+1, $keywords[$i]->get_keyword(), PDO::PARAM_STR);
+    }
+    $statement->execute();
     $results = $statement->fetchAll();
 
     $response['mass_query_results'] = $results;
 
-
-    // $pdo_str = create_pdo_placeholder_str(count($keywords), 1);
-    // $sql = 'SELECT page_id, dupe_total FROM keywords_' . $keywords[0][0] . ' WHERE keyword IN ' . $pdo_str . ' AND site_id = ? ORDER BY dupe_total DESC'
-
-    // Obtain results for each term in the search phrase
-    foreach ($terms as $term) {
-        // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
-        $sql = 'SELECT page_id, dupe_total FROM keywords_' . $term[0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
-        $statement = $pdo->prepare($sql);
-        $statement->execute([$term, $site_id]);
-        $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
-
-        // If at least one result is found, then mark this keyword as valid.
-        $isValidTerm = false;
-        $suggestions = [];
-        if (count($results) > 0) {
-            $isValidTerm = true;
-        }
-        else {
-            // If no results are found, this could indicate a mis-spelled word.
-            // Binary search the imported English dictionary for any matches.
-            $matchIndex = $word_dict->search($term); //binarySearchWord($wordDict, 0, count($wordDict) - 1, $term);
-
-            if ($matchIndex !== -1) {
-                // A result was found in the dictionary
-                $response['matched'][] = $word_dict->word_at($matchIndex); //$wordDict[$matchIndex]['word'];
-                $isValidTerm = true;
-                // The dupe count for all pages is 0 for this term.
-            }
-            else {
-                // If the binarySearch didn't find the word, then there has been a mis-spelling.
-                $matchIndex = $meta_dict->search(metaphone($term));
-                $suggestion_indices = $meta_dict->metaphone_walk($matchIndex);
-                $suggestions = $meta_dict->indices_to_words($suggestion_indices);
-
-                //$suggestions_unsorted = getAllMetaphones($metaDict, 0, count($metaDict) - 1, metaphone($term));
-
-                if (count($suggestions) > 0) {
-                    $response['suggestions'] = $suggestions; // Before the suggestions got sorted
-
-                    $suggestions = sortSuggestions($suggestions, $term);
-                    $response['suggestions_sorted'] = $suggestions; // After the suggestions got sorted
+    // Obtain all relevance scores.
+    $score_keeper = new ScoreKeeper();
+    foreach ($results as $result) {
+        foreach ($keywords as $keyword) {
+            $keywordsMatch = $result['keyword'] === $keyword->get_keyword();
+            $hasMax = $keyword->get_max() !== null;
+            // Storing this max will come in handy when calculating relevance scores.
+            if ($keywordsMatch) {
+                if (!$hasMax) {
+                    // Store max dupe_total for this keyword
+                    $keyword->set_max($result['dupe_total']);
                 }
-                
-                // If there are no suggestions for what the word can be, we must ignore the search term and continue on.
+
+                $score = $keyword->relevance($result['dupe_total']);
+                $score_keeper->add_to_score($score, $result['page_id']);
+                break;
             }
-        }
-
-        // In case neither of these cases are true, move onto the next term and ignore this one.
-        if ($isValidTerm) {
-            $max = $results[0]['dupe_total'];
-
-            // Add up the relevance score for each page based on keyword occurances on the page.
-            foreach ($results as $result) {
-                $dupe_total = $result['dupe_total'];
-                $page_id = $result['page_id'];
-                // Increment the relevance scores of each page.
-                if (isset($relevance_scores[$page_id])) {
-                    $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
-                }
-                else {
-                    $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
-                }
-            }
-        }
-        else if (isset($suggestions[0])) {
-            // Attempt to find a suggestion which best matches what the user may have meant to type.
-            // If a suggestion is not found in the site's content, then move onto the next suggestion until we find a match in the content or run out of suggestions.
-            foreach ($suggestions as $suggestion) {
-                // Search through keywords for all pages which contain a matching keyword. We use the first letter of the term to select keywords from the correct table.
-                $sql = 'SELECT page_id, dupe_total FROM keywords_' . $suggestion['term'][0] . ' WHERE keyword = ? AND site_id = ? ORDER BY dupe_total DESC';
-                $statement = $pdo->prepare($sql);
-                $statement->execute([$suggestion['term'], $site_id]);
-                $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
-
-                if (count($results) > 0) {
-                    $max = $results[0]['dupe_total'];
-
-                    // Add up the relevance score for each page based on keyword occurances on the page.
-                    foreach ($results as $result) {
-                        $dupe_total = $result['dupe_total'];
-                        $page_id = $result['page_id'];
-                        // Increment the relevance scores of each page.
-                        if (isset($relevance_scores[$page_id])) {
-                            $relevance_scores[$page_id] += ceil(($dupe_total / $max) * 100);
-                        }
-                        else {
-                            $relevance_scores[$page_id] = ceil(($dupe_total / $max) * 100);
-                        }
-                    }
-
-                    //$best_suggestions[] = $suggestion;
-                    //$best_suggestions[$term] = $suggestion;
-                }
-            }
-           // $response['best_suggestions'] = $best_suggestions;
         }
     }
 
@@ -502,20 +486,19 @@ try {
     $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
     // Fill the phraseHits array with the indices of any search phrase matches within the content of each page.
-    $phraseHits = [];
+    //$phraseHits = [];
     foreach ($results as $result) {
         // Case-insensitive search for the needle (phrase) in the haystack (content)
         $exactMatchIndex = stripos($result['content'], $phrase);
         if ($exactMatchIndex !== false) {
-            $relevance_scores[$page_id] += count($terms) * 100;
-            $phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
+            $inflated_score = count($keywords) * 100;
+            $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
+            //$phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
         }
     }
 
     // Put all array keys (aka page_id's) into a separate array.
-    $page_ids = array_keys($relevance_scores);
-
-    // SELECT * FROM contents WHERE page_id IN ('2901', '2911', '2906', '2921') AND site_id = 53
+    $page_ids = array_keys($score_keeper->get_all_scores());
 
     // To comunicate with the database as few times as possible, 
     // this SQL query gets filled with all of the page_id's that we need info for.
@@ -529,20 +512,20 @@ try {
     $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
 
     // Create a Result object for each search result found
-    //$search_results = [];
+    $search_results = []; // Contains all Results objects.
     for ($i = 0; $i < count($results); $i++) {
         $page_id = $results[$i]['page_id'];
         $search_results[] = new Result($results[$i]['page_id'],
                                        $urlNoPath . $results[$i]['path'], 
                                        $results[$i]['title'], 
                                        $results[$i]['description'], 
-                                       $relevance_scores[$page_id]);
+                                       $score_keeper->get_score($page_id));
     }
 
     // Sort the pages by their relevance score
     usort($search_results, 'resultSort');
 
-    $response['relevance_scores'] = $relevance_scores;
+    $response['relevance_scores'] = $score_keeper->get_all_scores();
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
@@ -551,12 +534,7 @@ try {
 catch (Exception $e) {
     // One of our database queries have failed.
     // Print out the error message.
-    //echo $e->getMessage();
     $response['db_error'] = $e->getMessage();
-    // Rollback the transaction.
-    if (isset($pdo)) {
-        $pdo->rollBack();
-    }
 }
 
 // Monitor program performance using this timer
@@ -650,6 +628,10 @@ function resultSort($resA, $resB) {
         return 0;
     }
     return ($a > $b) ? -1 : 1;
+}
+
+function nat_keyword_cmp($a, $b) {
+    return strnatcasecmp($a->get_keyword(), $b->get_keyword());
 }
 
 // Input: A keyword string.
