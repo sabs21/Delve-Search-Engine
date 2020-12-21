@@ -78,13 +78,11 @@ class WordDictionary extends Dictionary {
     // Perform a binary search for a given term based on a word.
     public function search($key) {
         //$arr = parent::get_dict();
-        $test_arr = [];
         $l = 0;
         $h = parent::length();
 
         while ($h >= $l) {
             $mid = ceil($l + ($h - $l) / 2); 
-            $test_arr[] = parent::word_at($mid);
     
             // If the element is present at the middle itself 
             if (parent::word_at($mid) === $key) {
@@ -103,8 +101,7 @@ class WordDictionary extends Dictionary {
         }
     
         // We reach here when element is not present in array 
-        //return -1;
-        return $test_arr;
+        return -1;
     }
 
     /*public function word_at($index) {
@@ -133,7 +130,7 @@ class MetaphoneDictionary extends Dictionary {
             $mid = ceil($l + ($h - $l) / 2); 
     
             // If the element is present at the middle itself 
-            if (parent::metaphone_at($mid) == $key) {
+            if (parent::metaphone_at($mid) === $key) {
                 return floor($mid); 
             }
     
@@ -234,7 +231,7 @@ $path = "./metaphoneSorted.json";
 $json = file_get_contents($path);
 $metaDict = json_decode($json, TRUE);*/
 
-$word_dict = new WordDictionary("./wordSorted2.json");
+$word_dict = new WordDictionary("./wordSorted.json");
 $meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 
 // Use this array as a basic response object. May need something more in depth in the future.
@@ -306,12 +303,6 @@ try {
         throw new Exception("Site not found in database.");
     }
 
-    // TESTING WORD BINARY SEARCH
-    if ($sql_res) { // Should always be true
-        $response['binary_search_tries'] = $word_dict->search('roofing');
-        throw new Exception("Testing binary search!");
-    }
-
     // Use relevance_scores array to incrementally tally each relevance score for each page.
     $relevance_scores = [];
 
@@ -349,8 +340,6 @@ try {
     }
 
     sort($keywords);
-
-    $response['keywords_arr'] = $word_dict->search('roofing');
 
     //$response['keywords_arr'] = $keywords;
 
@@ -397,7 +386,6 @@ try {
     $results = $statement->fetchAll();
 
     $response['mass_query_results'] = $results;
-
 
 
     // $pdo_str = create_pdo_placeholder_str(count($keywords), 1);
