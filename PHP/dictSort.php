@@ -44,14 +44,12 @@ class Word {
     }
 }
 
-
-
 $wholeDict = [];
 
 // Concatenate all dictionary files together.
 for ($i = 0; $i < 26; $i++) {
     $current_letter = chr(65 + $i);
-    $path = '../data/D' . $current_letter . '.json';
+    $path = './dictionary/D' . $current_letter . '.json';
     $json = file_get_contents($path);
     $data = json_decode($json, TRUE);
     $words = array_keys($data);
@@ -69,10 +67,10 @@ for ($i = 0; $i < 26; $i++) {
 
 //$metaphoneSorted = $all_words;
 
-usort($wholeDict, 'cmp_obj');
+usort($wholeDict, 'nat_cmp');
 
-file_put_contents("./metaphoneSorted.json", json_encode($wholeDict));
-//file_put_contents("wordSorted.json", json_encode($wholeDict));
+//file_put_contents("./metaphoneSorted.json", json_encode($wholeDict));
+file_put_contents("metaphoneSorted2.json", json_encode($wholeDict));
 
 /*$path = "./wordSorted.json";
 
@@ -116,11 +114,12 @@ usort($metaphoneSorted, 'cmp_obj');
 
 file_put_contents("./metaphoneSorted.json", json_encode($all_words));*/
 
-function cmp_obj($a, $b) {
-    $al = strtolower($a->metaphone);
-    $bl = strtolower($b->metaphone);
-    if ($al == $bl) {
+function nat_cmp($a, $b) {
+    //$al = strtolower($a->metaphone);
+    //$bl = strtolower($b->metaphone);
+    /*(if ($al == $bl) {
         return 0;
     }
-    return ($al > $bl) ? +1 : -1;
+    return ($al > $bl) ? +1 : -1;*/
+    return strnatcasecmp($a->metaphone, $b->metaphone);
 }
