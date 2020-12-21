@@ -238,6 +238,7 @@ $meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 // Prepares a response to identify errors and successes.
 $response = [
     'time_taken' => NULL,
+    'site_exists' => false,
     'searchPhrase' => $phrase,
     'searchTerms' => $terms,
     'results' => NULL,
@@ -291,7 +292,16 @@ try {
     $statement = $pdo->prepare($sql);
     $statement->execute([$url]);
     $sql_res = $statement->fetch(); // Returns an array of *indexed and associative results. Indexed is preferred.
-    $site_id = $sql_res['site_id']; // *Accessing indexes don't seem to work from the fetch() 
+
+    // Check existence of site in database
+    $site_id = NULL;
+    if ($sql_res) {
+        $site_id = $sql_res['site_id'];
+        $response['site_exists'] = true;
+    }
+    else {
+        throw new Exception("Site not found in database.");
+    }
 
     // Use relevance_scores array to incrementally tally each relevance score for each page.
     $relevance_scores = [];
