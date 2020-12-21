@@ -258,7 +258,7 @@ class Result {
     //public $dupeTotals; // An array which holds every dupe_total for this given page
     public $relevance;
 
-    public function __construct($page_id, $url, $title = NULL, $snippet = NULL, $relevance = 0) {
+    public function __construct($page_id, $url = NULL, $title = NULL, $snippet = NULL, $relevance = 0) {
         $this->page_id = $page_id;
         $this->url = $url;
         $this->title = $title;
@@ -267,12 +267,36 @@ class Result {
         $this->relevance = $relevance;
     }
 
-    public function add_to_relevance($value) {
-        $this->relevance += $value;
+    public function get_page_id() {
+        return $this->page_id;
+    }
+
+    public function get_url() {
+        return $this->url;
+    }
+    public function set_url($str) {
+        $this->url = $str;
+    }
+
+    public function get_title() {
+        return $this->title;
+    }
+    public function set_title($str) {
+        $this->title = $str;
+    }
+
+    public function get_snippet() {
+        return $this->snippet;
+    }
+    public function set_snippet($str) {
+        $this->snippet = $str;
     }
 
     public function get_relevance() {
         return $this->relevance;
+    }
+    public function set_relevance($value) {
+        $this->relevance = $value;
     }
 }
 
@@ -421,15 +445,10 @@ try {
             $total = 1;
         }
     }
-
-    // Store the last keyword_set.
-    $groups[] = ['first_letter' => $first_letter, 'total' => $total];
-
-    //$response['groups'] = $groups;
+    $groups[] = ['first_letter' => $first_letter, 'total' => $total]; // Store the last keyword_set.
 
     // Generate the sql query
     $sql = '';
-    // A keyword_set is a group of keywords who share the same first letter.
     foreach ($groups as $group) {
         $pdo_str = create_pdo_placeholder_str($group['total'], 1);
         $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $group['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
@@ -437,34 +456,35 @@ try {
     // Remove the extra 'union ALL' from the end of the SQL string and replace it with an ORDER BY clause
     $sql = substr($sql, 0, -10);
     $sql .= 'ORDER BY dupe_total DESC';
-
     $statement = $pdo->prepare($sql);
-    //$response['sql_query'] = $sql;
-    // Since we cannot use PDO to directly execute an array of objects,
-    // we use this for loop to solve that issue.
     for ($i = 0; $i < count($keywords); $i++) {
+        // Since we cannot use PDO to directly execute an array of objects,
+        // we use this for loop to solve that issue.
         $statement->bindValue($i+1, $keywords[$i]->get_keyword(), PDO::PARAM_STR);
     }
     $statement->execute();
     $results = $statement->fetchAll();
 
     $response['mass_query_results'] = $results;
-
-    // Obtain all relevance scores.
+    
+    // Obtain all relevance scores and populate array of Results.
+    $search_results = []; // Contains all Results objects.
     $score_keeper = new ScoreKeeper();
     foreach ($results as $result) {
+        $page_id = $result['page_id'];
+        $search_results[$page_id] = new Result($page_id);
         foreach ($keywords as $keyword) {
-            $keywordsMatch = $result['keyword'] === $keyword->get_keyword();
-            $hasMax = $keyword->get_max() !== null;
+            $keywords_match = $result['keyword'] === $keyword->get_keyword();
+            $has_max = $keyword->get_max() !== null;
             // Storing this max will come in handy when calculating relevance scores.
-            if ($keywordsMatch) {
-                if (!$hasMax) {
+            if ($keywords_match) {
+                if (!$has_max) {
                     // Store max dupe_total for this keyword
                     $keyword->set_max($result['dupe_total']);
                 }
 
                 $score = $keyword->relevance($result['dupe_total']);
-                $score_keeper->add_to_score($score, $result['page_id']);
+                $score_keeper->add_to_score($score, $page_id);
                 break;
             }
         }
@@ -494,6 +514,7 @@ try {
             $inflated_score = count($keywords) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
             //$phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
+            $search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
         }
     }
 
@@ -509,17 +530,28 @@ try {
         $statement->bindValue($i+1, $page_ids[$i], PDO::PARAM_INT);
     }
     $statement->execute();
-    $results = $statement->fetchAll(); // Returns an array of indexed and associative results. Indexed is preferred.
+    $results = $statement->fetchAll();
 
     // Create a Result object for each search result found
-    $search_results = []; // Contains all Results objects.
+    
     for ($i = 0; $i < count($results); $i++) {
         $page_id = $results[$i]['page_id'];
-        $search_results[] = new Result($results[$i]['page_id'],
+
+        // Check if a snippet was already generated for this result.
+        $snippet = $search_results[$page_id]->get_snippet();
+        if ($snippet === NULL) {
+            $search_results[$page_id]->set_snippet($results[$i]['description']);
+        }
+
+        $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);
+        $search_results[$page_id]->set_title($results[$i]['title']);
+        $search_results[$page_id]->set_relevance($score_keeper->get_score($page_id));
+        
+        /*$search_results[$page_id] = new Result($page_id,
                                        $urlNoPath . $results[$i]['path'], 
                                        $results[$i]['title'], 
-                                       $results[$i]['description'], 
-                                       $score_keeper->get_score($page_id));
+                                       $snippet, 
+                                       $score_keeper->get_score($page_id));*/
     }
 
     // Sort the pages by their relevance score
@@ -601,22 +633,6 @@ function create_pdo_placeholder_str($total_placeholders, $total_values) {
     return $pdo_str;
 }
 
-// Input: Array obtained from getAllMetaphones()
-//        Search term
-// Output: Array sorted by closest match to furthest match.
-function sortSuggestions($suggestions, $key) {
-    $results = [];
-    foreach ($suggestions as $suggestion) {
-        $results[] = ['distance' => levenshtein($suggestion, $key), 'term' => $suggestion];
-    }
-
-    usort($results, function ($result1, $result2) {
-        return $result1['distance'] <=> $result2['distance'];
-    });
-
-    return $results;
-}
-
 // Input: Two Result objects
 // Output: Integer signifying whether A is less than, equal to, or greater than B
 // Compare Result A with Result B
@@ -630,6 +646,9 @@ function resultSort($resA, $resB) {
     return ($a > $b) ? -1 : 1;
 }
 
+// Input: Two Keyword objects
+// Output: -1, 0, 1
+// Compares two keywords lexicographically.
 function nat_keyword_cmp($a, $b) {
     return strnatcasecmp($a->get_keyword(), $b->get_keyword());
 }
