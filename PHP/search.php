@@ -104,10 +104,61 @@ class WordDictionary extends Dictionary {
         return -1;
     }
 
-    /*public function word_at($index) {
-        //return $this->dict[$index]['word'];
-        return parent::word_at($index);
-    }*/
+    // Input: anchor is the index of a word which we want to find more of around it.
+    // Output: Array of indices of words with a short levenshtein distance to the word at the anchor.
+    // For the metaphone sorted dictionaries
+    // Returns an array of indices of words which contain the same metaphone as the word at the given index
+    public function word_walk($anchor) {
+        $results = [ $anchor ];
+        $key = parent::word_at($anchor);
+        $max_distance = ceil(strlen($key) / 2);
+        $limit = 50; // In case a lot of matches are found, limit the walk to x amount of matches.
+        $buffer = 10; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
+        
+        // Check higher indices for more matches.
+        $has_possible_suggestions = true;
+        $i = $anchor + 1;
+        $k = 0; // Limit counter.
+        $outlier_buffer = $buffer; 
+        while ($has_possible_suggestions && $k < $limit) {
+            $l_distance = levenshtein($key, parent::word_at($i));
+            if ($l_distance < $max_distance) {
+                $results[] = $i;
+            }
+            else {
+                $outlier_buffer--;
+            }
+
+            if ($outlier_buffer <= 0) {
+                $has_possible_suggestions = false;
+            }
+            $i++;
+            $k++;
+        }
+
+        // Check lower indices for more matches.
+        $has_possible_suggestions = true;
+        $j = $anchor - 1;
+        $k = 0; // Limit counter.
+        $outlier_buffer = $buffer;
+        while ($has_possible_suggestions && $k < $limit) {
+            $l_distance = levenshtein($key, parent::word_at($j));
+            if ($l_distance < $max_distance) {
+                $results[] = $j;
+            }
+            else {
+                $outlier_buffer--;
+            }
+
+            if ($outlier_buffer <= 0) {
+                $has_possible_suggestions = false;
+            }
+            $j--;
+            $k++;
+        }
+    
+        return $results;
+    }
 }
 
 // MetaphoneDictionary implies a dictionary which is sorted alphabetically by metaphone
@@ -149,26 +200,6 @@ class MetaphoneDictionary extends Dictionary {
         return -1;
     }
 
-    // Input: anchor is the index of a metaphone which we want to find more of around it.
-    // Output: Array of indices that contain matching metaphones in the dictionary.
-    // For the metaphone sorted dictionaries
-    // Returns an array of indices of words which contain the same metaphone as the word at the given index
-    public function metaphone_walk($anchor) {
-        $results = [ $anchor ];
-        $key = parent::metaphone_at($anchor);
-
-        // Check higher indices for more matches.
-        for ($i = $anchor + 1; parent::metaphone_at($i) == $key; $i++) {
-            $results[] = $i; //parent::word_at($i);
-        }
-
-        // Check lower indices for more matches.
-        for ($j = $anchor - 1; parent::metaphone_at($j) == $key; $j--) {
-            $results[] = $j; //parent::word_at($j);
-        }
-    
-        return $results;
-    }
 }
 
 // Consider replacing relevance array with a ScoreKeeper class.
@@ -200,47 +231,60 @@ class ScoreKeeper {
 class Keyword {
     protected $original; // Original term that this keyword references.
     //protected $pages_found;
-    protected $keyword;
+    public $keyword;
+    public $term_index; // Index of the term which this keyword references.
     protected $is_suggestion;
+    public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
     protected $max; // Maximum dupe_totals of this keyword in the database.
 
-    public function __construct($original, $suggested = NULL) {
+    public function __construct($original, $term_index, $suggested = NULL) {
         $this->original = $original;
+        $this->term_index = $term_index;
         $this->max = NULL;
         //$this->pages_found = [];
         if (isset($suggested)) {
             $this->keyword = $suggested;
             $this->is_suggestion = true;
+            $this->suggestion_distance = levenshtein($original, $suggested);
         }
         else {
             $this->keyword = $original;
             $this->is_suggestion = false;
+            $this->suggestion_distance = 0;
         }
     }
 
-    function get_original() {
+    public function get_term_index() {
+        return $this->term_index;
+    }
+
+    public function get_suggestion_distance() {
+        return $this->suggestion_distance;
+    }
+
+    public function get_original() {
         return $this->original;
     }
 
-    function get_keyword() {
+    public function get_keyword() {
         return $this->keyword;
     }
 
-    function is_suggestion() {
+    public function is_suggestion() {
         return $this->is_suggestion;
     }
 
-    function get_max() {
+    public function get_max() {
         return $this->max;
     }
 
-    function set_max($new_max) {
+    public function set_max($new_max) {
         $this->max = $new_max;
     }
 
     // If the max is set, output a relevance score.
     // If the max is not set, output 0;
-    function relevance($dupe_total) {
+    public function relevance($dupe_total) {
         if (isset($this->max)) {
             return ceil(($dupe_total / $this->max) * 100);
         }
@@ -333,17 +377,16 @@ $meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 // Prepares a response to identify errors and successes.
 $response = [
     'time_taken' => NULL,
+    'keywords' => NULL,
     'site_exists' => false,
     'searchPhrase' => $phrase,
-    'searchTerms' => $terms,
+    'searchTerms' => NULL,
     'results' => NULL,
     'totalResults' => NULL,
     'totalPages' => NULL,
     'page' => $page_to_return + 1,
     'relevance_scores' => NULL,
-    'matched' => NULL,
-    'suggestions' => NULL,
-    'suggestions_sorted' => NULL
+    'matched' => NULL
 ];
 
 /////////////////////////////////
@@ -402,6 +445,7 @@ try {
     $keywords = [];
 
     // Fill the keywords array with all possible keywords
+    $i = 0;
     foreach ($terms as $term) {
         // Loop to check if each term is english
         // Check if the word is english to check and see if we need to generate suggestions.
@@ -412,20 +456,35 @@ try {
         if (!$isEnglish) {
             // Formulate the suggestions array, 
             // Then put suggestions into keywords array.
+
+            // Find a ballpark estimate of where the term should be using metaphones.
             $meta_match = $meta_dict->search(metaphone($term));
-            $suggestion_indices = $meta_dict->metaphone_walk($meta_match);
-            $suggestions = $meta_dict->indices_to_words($suggestion_indices);
+            $meta_word = $meta_dict->word_at($meta_match);
+
+            // Using the ballpark estimate, walk around to find any potential matches
+            $match = $word_dict->search($meta_word);
+            $suggestion_indices = $word_dict->word_walk($match);
+            $suggestions = $word_dict->indices_to_words($suggestion_indices);
 
             foreach ($suggestions as $suggestion) {
-                $keywords[] = new Keyword($term, $suggestion);
+                $keywords[] = new Keyword($term, $i, $suggestion);
             }
         } 
         else {
-            $keywords[] = new Keyword($term);
+            $keywords[] = new Keyword($term, $i);
         }
+        $i++;
     }
 
     usort($keywords, 'nat_keyword_cmp');
+
+    // Display all keywords to be checked in the database.
+    // DEBUGGING PURPOSES
+    $all_keywords = [];
+    foreach ($keywords as $keyword) {
+        $all_keywords[] = $keyword->get_keyword();
+    }
+    $response['keywords'] = $keywords;
 
     // Tally each group of keywords with the same first letter
     // Used to generate a big keyword search query
@@ -445,7 +504,7 @@ try {
             $total = 1;
         }
     }
-    $groups[] = ['first_letter' => $first_letter, 'total' => $total]; // Store the last keyword_set.
+    $groups[] = ['first_letter' => $first_letter, 'total' => $total]; // Store the last group.
 
     // Generate the sql query
     $sql = '';
@@ -466,14 +525,67 @@ try {
     $results = $statement->fetchAll();
 
     $response['mass_query_results'] = $results;
+
+    // Now we can find out which Keywords are useful and which are not.
+
+    usort($keywords, 'keyword_distance_cmp');
+
+    // Determine which keywords are useful.
+    foreach ($keywords as $key => $keyword) {
+        if (!$keyword->is_suggestion()) {
+            continue;
+        }
+
+        $is_good_suggestion = false;
+        foreach ($results as $result) {
+            // If this keyword is found in the database search results, then it's a good suggestion.
+            if ($result['keyword'] === $keyword->get_keyword()) {
+                $is_good_suggestion = true;
+                break;
+            }
+        }
+
+        if (!$is_good_suggestion) {
+            //$keyword->set_as_suggestion(false);
+            unset($keywords[$key]); // Remove the entry from the keywords array.
+        }
+    }
+
+    // Re-index the keywords array to account for all of the removed entries.
+    $keywords = array_values($keywords);
+    $response['array_val_keywords'] = $keywords;
+
+    // Replace misspelled terms with best suggestions.
+    $terms_replaced = []; // Array of indices of all terms which have been replaced.
+    foreach ($terms as $term_index => $term) {
+        foreach ($keywords as $keyword) {
+            if (!$keyword->is_suggestion()) {
+                continue;
+            }
+
+            if ($term_index === $keyword->get_term_index()) {
+                $terms[$term_index] = $keyword->get_keyword();
+                $terms_replaced[] = $term_index; // The idea is to bold all of these terms in the front-end when the dialog box appears "Did you mean..."
+            }
+        }
+    }
+
+    $response['searchTerms'] = $terms;
     
-    // Obtain all relevance scores and populate array of Results.
+    // Obtain all relevance scores and populate array of Results
     $search_results = []; // Contains all Results objects.
     $score_keeper = new ScoreKeeper();
     foreach ($results as $result) {
         $page_id = $result['page_id'];
         $search_results[$page_id] = new Result($page_id);
         foreach ($keywords as $keyword) {
+            // Check whether this keyword is actually a search term.
+            // If not, move to the next keyword.
+            $term_index = $keyword->get_term_index();
+            if (!$terms[$term_index] === $keyword->get_keyword()) {
+                continue;
+            }
+
             $keywords_match = $result['keyword'] === $keyword->get_keyword();
             $has_max = $keyword->get_max() !== null;
             // Storing this max will come in handy when calculating relevance scores.
@@ -651,6 +763,19 @@ function resultSort($resA, $resB) {
 // Compares two keywords lexicographically.
 function nat_keyword_cmp($a, $b) {
     return strnatcasecmp($a->get_keyword(), $b->get_keyword());
+}
+
+// Input: Two Keyword objects
+// Output: -1, 0, 1
+// Compare two keywords based on levenshtein distance.
+function keyword_distance_cmp($a, $b) {
+    $a_dist = $a->get_suggestion_distance();
+    $b_dist = $b->get_suggestion_distance();
+
+    if ($a_dist === $b_dist) {
+        return 0;
+    }
+    return ($a_dist < $b_dist) ? -1 : 1;
 }
 
 // Input: A keyword string.
