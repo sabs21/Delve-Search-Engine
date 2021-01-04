@@ -63,6 +63,13 @@ class Dictionary {
 
         return $result;
     }
+
+    // Input: First letter of a word.
+    // Output: Array of two values, low and high (for a dictionary search function)
+    // Ensure that the metaphone for a given word falls within the correct range of 
+    //public function get_search_range_from_letter() {
+
+    //}
 }
 
 // WordDictionary implies a dictionary which is sorted alphabetically by word
@@ -76,7 +83,7 @@ class WordDictionary extends Dictionary {
     //        key is the word we're searching for
     // Output: Index of the located word in the given array (arr)
     // Perform a binary search for a given term based on a word.
-    public function search($key) {
+    /*public function search($key) {
         //$arr = parent::get_dict();
         $l = 0;
         $h = parent::length();
@@ -102,63 +109,131 @@ class WordDictionary extends Dictionary {
     
         // We reach here when element is not present in array 
         return -1;
+    }*/
+
+    // Input: key is the word we're searching for
+    // Output: Array containing a flag stating if an exact match was found, and the index of the match.
+    // Perform a binary search for a given term based on a word.
+    public function search($key) {
+        //$arr = parent::get_dict();
+        $l = 0;
+        $h = parent::length();
+        $mid = ceil($l + ($h - $l) / 2); 
+
+        while ($h >= $l) {
+            // If the element is present at the middle itself 
+            if (parent::word_at($mid) === $key) {
+                return ['found' => true, 'index' => floor($mid)]; 
+            }
+    
+            // If element is smaller than mid, then 
+            // it can only be present in left subarray 
+            if (parent::word_at($mid) > $key) {
+                $h = $mid - 1;
+            }
+            else {
+                // Else the element can only be present in right subarray 
+                $l = $mid + 1;
+            }
+
+            $mid = ceil($l + ($h - $l) / 2);
+        }
+    
+        // We reach here when element is not present in array 
+        return ['found' => false, 'index' => $mid];
     }
 
     // Input: anchor is the index of a word which we want to find more of around it.
     // Output: Array of indices of words with a short levenshtein distance to the word at the anchor.
     // For the metaphone sorted dictionaries
     // Returns an array of indices of words which contain the same metaphone as the word at the given index
-    public function word_walk($anchor) {
+    public function walk($anchor) {
         $results = [ $anchor ];
         $key = parent::word_at($anchor);
         $max_distance = ceil(strlen($key) / 2);
-        $limit = 50; // In case a lot of matches are found, limit the walk to x amount of matches.
-        $buffer = 10; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
+        $limit = 100; // In case a lot of matches are found, limit the walk to x amount of matches.
+        $buffer = 25; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
         
         // Check higher indices for more matches.
-        $has_possible_suggestions = true;
-        $i = $anchor + 1;
-        $k = 0; // Limit counter.
-        $outlier_buffer = $buffer; 
-        while ($has_possible_suggestions && $k < $limit) {
-            $l_distance = levenshtein($key, parent::word_at($i));
-            if ($l_distance < $max_distance) {
-                $results[] = $i;
+        $up = $anchor + 1;
+        $down = $anchor - 1;
+        while ($limit > 0) {
+            // Calculate the distance between the key and the words being walked on.
+            $up_distance = levenshtein($key, parent::word_at($up));
+            $down_distance = levenshtein($key, parent::word_at($down));
+
+            // Check if the higher index is a possible suggestion
+            if ($up_distance < $max_distance) {
+                $results[] = $up;
             }
             else {
-                $outlier_buffer--;
+                $buffer--;
             }
 
-            if ($outlier_buffer <= 0) {
-                $has_possible_suggestions = false;
-            }
-            $i++;
-            $k++;
-        }
-
-        // Check lower indices for more matches.
-        $has_possible_suggestions = true;
-        $j = $anchor - 1;
-        $k = 0; // Limit counter.
-        $outlier_buffer = $buffer;
-        while ($has_possible_suggestions && $k < $limit) {
-            $l_distance = levenshtein($key, parent::word_at($j));
-            if ($l_distance < $max_distance) {
-                $results[] = $j;
+            // Check if the lower index is a possible suggestion
+            if ($down_distance < $max_distance) {
+                $results[] = $down;
             }
             else {
-                $outlier_buffer--;
+                $buffer--;
             }
 
-            if ($outlier_buffer <= 0) {
-                $has_possible_suggestions = false;
+            // If there's no more buffer room, break from the loop.
+            if ($buffer <= 0) {
+                break;
             }
-            $j--;
-            $k++;
+
+            $up++;
+            $down--;
+            $limit--;
         }
-    
+
         return $results;
     }
+
+    /*public function test_walk($anchor) {
+        $results = [ $anchor ];
+        $key = parent::word_at($anchor);
+        $max_distance = floor(strlen($key) / 2);
+        $limit = 100; // In case a lot of matches are found, limit the walk to x amount of matches.
+        $buffer = 25; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
+        
+        // Check higher indices for more matches.
+        $up = $anchor + 1;
+        $down = $anchor - 1;
+        while ($limit > 0) {
+            // Calculate the distance between the key and the words being walked on.
+            $up_distance = levenshtein($key, parent::word_at($up));
+            $down_distance = levenshtein($key, parent::word_at($down));
+
+            // Check if the higher index is a possible suggestion
+            if ($up_distance < $max_distance) {
+                $results[] = $up;
+            }
+            else {
+                $buffer--;
+            }
+
+            // Check if the lower index is a possible suggestion
+            if ($down_distance < $max_distance) {
+                $results[] = $down;
+            }
+            else {
+                $buffer--;
+            }
+
+            // If there's no more buffer room, break from the loop.
+            if ($buffer <= 0) {
+                break;
+            }
+
+            $up++;
+            $down--;
+            $limit--;
+        }
+
+        return $max_distance;
+    }*/
 }
 
 // MetaphoneDictionary implies a dictionary which is sorted alphabetically by metaphone
@@ -167,13 +242,10 @@ class MetaphoneDictionary extends Dictionary {
         parent::__construct($path);
     }
 
-    // Input: l is low index
-    //        h is high index
-    //        key is the word we're searching for
-    // Output: Index of the located word in the given array (arr)
+    // Input: key is the metaphone we're searching for. String.
+    // Output: Array containing a flag stating if an exact match was found, and the index of the match.
     // Perform a binary search for a given term based on a metaphone.
     public function search($key) {
-        //$arr = parent::get_dict();
         $l = 0;
         $h = parent::length();
 
@@ -182,7 +254,7 @@ class MetaphoneDictionary extends Dictionary {
     
             // If the element is present at the middle itself 
             if (parent::metaphone_at($mid) === $key) {
-                return floor($mid); 
+                return ['found' => true, 'index' => floor($mid)]; 
             }
     
             // If element is smaller than mid, then 
@@ -197,9 +269,29 @@ class MetaphoneDictionary extends Dictionary {
         }
     
         // We reach here when element is not present in array 
-        return -1;
+        return ['found' => false, 'index' => floor($mid)];
     }
 
+    // Input: anchor is the index of a metaphone we want to explore around.
+    // Output: Array of indices that contain matching metaphones in the dictionary.
+    // For the metaphone sorted dictionaries
+    // Returns an array of indices of words which contain the same metaphone as the word at the given index
+    public function walk($anchor) {
+        $results = [ $anchor ];
+        $key = parent::metaphone_at($anchor);
+
+        // Check higher indices for more matches.
+        for ($i = $anchor + 1; parent::metaphone_at($i) == $key; $i++) {
+            $results[] = $i;
+        }
+
+        // Check lower indices for more matches.
+        for ($j = $anchor - 1; parent::metaphone_at($j) == $key; $j--) {
+            $results[] = $j;
+        }
+    
+        return $results;
+    }
 }
 
 // Consider replacing relevance array with a ScoreKeeper class.
@@ -233,7 +325,7 @@ class Keyword {
     //protected $pages_found;
     public $keyword;
     public $term_index; // Index of the term which this keyword references.
-    protected $is_suggestion;
+    public $is_suggestion;
     public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
     protected $max; // Maximum dupe_totals of this keyword in the database.
 
@@ -386,7 +478,8 @@ $response = [
     'totalPages' => NULL,
     'page' => $page_to_return + 1,
     'relevance_scores' => NULL,
-    'matched' => NULL
+    'matched' => NULL,
+    'hasMisspelling' => false
 ];
 
 /////////////////////////////////
@@ -449,24 +542,32 @@ try {
     foreach ($terms as $term) {
         // Loop to check if each term is english
         // Check if the word is english to check and see if we need to generate suggestions.
-        $word_match = $word_dict->search($term);
-        $isEnglish = $word_match !== -1;
+        /*$word_match = $word_dict->search($term);
+        $isEnglish = $word_match !== -1;*/
+        $match = $word_dict->search($term);
+        $isEnglish = $match['found'];
 
         // Then build up the keywords array to generate a large sql query
         if (!$isEnglish) {
             // Formulate the suggestions array, 
             // Then put suggestions into keywords array.
+            
+            // Indicate that this phrase contains a misspelling
+            $response['hasMisspelling'] = true;
 
-            // Find a ballpark estimate of where the term should be using metaphones.
-            $meta_match = $meta_dict->search(metaphone($term));
-            $meta_word = $meta_dict->word_at($meta_match);
-
-            // Using the ballpark estimate, walk around to find any potential matches
-            $match = $word_dict->search($meta_word);
-            $suggestion_indices = $word_dict->word_walk($match);
+            // Try to find any possible suggestions around the index which the binary search failed.
+            $suggestion_indices = $word_dict->walk($match['index']);
             $suggestions = $word_dict->indices_to_words($suggestion_indices);
-
             foreach ($suggestions as $suggestion) {
+                $keywords[] = new Keyword($term, $i, $suggestion);
+            }
+
+            // Find a ballpark estimate of where the term should be using metaphones and walk around to find any potential matches.
+            $meta_match = $meta_dict->search(metaphone($term));
+            $suggestion_indices = $meta_dict->walk($meta_match['index']);
+            $suggestions = $meta_dict->indices_to_words($suggestion_indices);
+            // The first term in this suggestions array is one we've already added to keywords. Ignore that term using array_slice
+            foreach (array_slice($suggestions, 1) as $suggestion) { 
                 $keywords[] = new Keyword($term, $i, $suggestion);
             }
         } 
@@ -555,17 +656,16 @@ try {
     $keywords = array_values($keywords);
     $response['array_val_keywords'] = $keywords;
 
-    // Replace misspelled terms with best suggestions.
-    $terms_replaced = []; // Array of indices of all terms which have been replaced.
+    // Form a new search phrase to replace misspelled terms with best suggestions.
+    //$terms_replaced = []; // Array of indices of all terms which have been replaced.
+    //$new_phrase = [];
     foreach ($terms as $term_index => $term) {
         foreach ($keywords as $keyword) {
-            if (!$keyword->is_suggestion()) {
-                continue;
-            }
-
             if ($term_index === $keyword->get_term_index()) {
-                $terms[$term_index] = $keyword->get_keyword();
-                $terms_replaced[] = $term_index; // The idea is to bold all of these terms in the front-end when the dialog box appears "Did you mean..."
+                    // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
+                    $terms[$term_index] = $keyword;
+                    break;
+
             }
         }
     }
