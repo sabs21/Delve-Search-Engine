@@ -596,8 +596,6 @@ try {
     $response['array_val_keywords'] = $keywords;
 
     // Form a new search phrase to replace misspelled terms with best suggestions.
-    //$terms_replaced = []; // Array of indices of all terms which have been replaced.
-    //$new_phrase = [];
     $phrase = NULL;
     foreach ($terms as $term_index => $term) {
         foreach ($keywords as $keyword) {
@@ -621,24 +619,17 @@ try {
     foreach ($results as $result) {
         $page_id = $result['page_id'];
         $search_results[$page_id] = new Result($page_id);
-        foreach ($keywords as $keyword) {
-            // Check whether this keyword is actually a search term.
-            // If not, move to the next keyword.
-            $term_index = $keyword->get_term_index();
-            if (!$terms[$term_index] === $keyword->get_keyword()) {
-                continue;
-            }
-
-            $keywords_match = $result['keyword'] === $keyword->get_keyword();
-            $has_max = $keyword->get_max() !== null;
+        foreach ($terms as $term) {
+            $keywords_match = $result['keyword'] === $term->get_keyword();
+            $has_max = $term->get_max() !== null;
             // Storing this max will come in handy when calculating relevance scores.
             if ($keywords_match) {
                 if (!$has_max) {
                     // Store max dupe_total for this keyword
-                    $keyword->set_max($result['dupe_total']);
+                    $term->set_max($result['dupe_total']);
                 }
 
-                $score = $keyword->relevance($result['dupe_total']);
+                $score = $term->relevance($result['dupe_total']);
                 $score_keeper->add_to_score($score, $page_id);
                 break;
             }
@@ -666,7 +657,7 @@ try {
         // Case-insensitive search for the needle (phrase) in the haystack (content)
         $exactMatchIndex = stripos($result['content'], $phrase);
         if ($exactMatchIndex !== false) {
-            $inflated_score = count($keywords) * 100;
+            $inflated_score = count($terms) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
             //$phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
             $search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
