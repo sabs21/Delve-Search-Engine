@@ -366,7 +366,7 @@ class Result {
 $raw = trim(file_get_contents('php://input'));
 $url = json_decode($raw)->url;
 $urlNoPath = $url;
-$phrase = trim(json_decode($raw)->phrase);
+$phrase = trim(json_decode($raw)->phrase); // This phrase will get replaced after spellchecking is complete.
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
 
 // Remove unnecessary characters and seperate phrase into seperate terms
@@ -411,7 +411,7 @@ $response = [
     'time_taken' => NULL,
     'keywords' => NULL,
     'site_exists' => false,
-    'searchPhrase' => $phrase,
+    'searchPhrase' => NULL,
     'searchTerms' => NULL,
     'results' => NULL,
     'totalResults' => NULL,
@@ -598,6 +598,7 @@ try {
     // Form a new search phrase to replace misspelled terms with best suggestions.
     //$terms_replaced = []; // Array of indices of all terms which have been replaced.
     //$new_phrase = [];
+    $phrase = NULL;
     foreach ($terms as $term_index => $term) {
         foreach ($keywords as $keyword) {
             if ($term_index === $keyword->get_term_index()) {
@@ -607,10 +608,13 @@ try {
 
             }
         }
+        $phrase .= $terms[$term_index]->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
     }
+    $phrase = substr($phrase, 0, -1); // Remove the space at the end.
 
+    $response['searchPhrase'] = $phrase;
     $response['searchTerms'] = $terms;
-    
+
     // Obtain all relevance scores and populate array of Results
     $search_results = []; // Contains all Results objects.
     $score_keeper = new ScoreKeeper();
