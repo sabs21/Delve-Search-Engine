@@ -20,16 +20,22 @@ ini_set('display_errors', 1);
 // CLASS DEFINITIONS //
 //////////////////////
 
-class Dictionary {
-    public $dict;
+class DictionaryFragment {
+    public $dict; // The imported dictionary json.
+    public $section; // Letter which all words begin with.
 
-    public function __construct($path) {
+    public function __construct($path, $section) {
         $json = file_get_contents($path);
         $this->dict = json_decode($json, TRUE);
+        $this->$section = $section;
     }
 
     protected function get_dict() {
         return $this->dict;
+    }
+
+    protected function get_section() {
+        return $this->section;
     }
 
     public function word_at($index) {
@@ -63,53 +69,13 @@ class Dictionary {
 
         return $result;
     }
-
-    // Input: First letter of a word.
-    // Output: Array of two values, low and high (for a dictionary search function)
-    // Ensure that the metaphone for a given word falls within the correct range of 
-    //public function get_search_range_from_letter() {
-
-    //}
 }
 
 // WordDictionary implies a dictionary which is sorted alphabetically by word
-class WordDictionary extends Dictionary {
-    public function __construct($path) {
-        parent::__construct($path);
+class WordDictionaryFragment extends DictionaryFragment {
+    public function __construct($section) {
+        parent::__construct('./dictionary/W' . $section . '.json', $section);
     }
-
-    // Input: l is low index
-    //        h is high index
-    //        key is the word we're searching for
-    // Output: Index of the located word in the given array (arr)
-    // Perform a binary search for a given term based on a word.
-    /*public function search($key) {
-        //$arr = parent::get_dict();
-        $l = 0;
-        $h = parent::length();
-
-        while ($h >= $l) {
-            $mid = ceil($l + ($h - $l) / 2); 
-    
-            // If the element is present at the middle itself 
-            if (parent::word_at($mid) === $key) {
-                return floor($mid); 
-            }
-    
-            // If element is smaller than mid, then 
-            // it can only be present in left subarray 
-            if (parent::word_at($mid) > $key) {
-                $h = $mid - 1;
-            }
-            else {
-                // Else the element can only be present in right subarray 
-                $l = $mid + 1;
-            }
-        }
-    
-        // We reach here when element is not present in array 
-        return -1;
-    }*/
 
     // Input: key is the word we're searching for
     // Output: Array containing a flag stating if an exact match was found, and the index of the match.
@@ -190,56 +156,12 @@ class WordDictionary extends Dictionary {
 
         return $results;
     }
-
-    /*public function test_walk($anchor) {
-        $results = [ $anchor ];
-        $key = parent::word_at($anchor);
-        $max_distance = floor(strlen($key) / 2);
-        $limit = 100; // In case a lot of matches are found, limit the walk to x amount of matches.
-        $buffer = 25; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
-        
-        // Check higher indices for more matches.
-        $up = $anchor + 1;
-        $down = $anchor - 1;
-        while ($limit > 0) {
-            // Calculate the distance between the key and the words being walked on.
-            $up_distance = levenshtein($key, parent::word_at($up));
-            $down_distance = levenshtein($key, parent::word_at($down));
-
-            // Check if the higher index is a possible suggestion
-            if ($up_distance < $max_distance) {
-                $results[] = $up;
-            }
-            else {
-                $buffer--;
-            }
-
-            // Check if the lower index is a possible suggestion
-            if ($down_distance < $max_distance) {
-                $results[] = $down;
-            }
-            else {
-                $buffer--;
-            }
-
-            // If there's no more buffer room, break from the loop.
-            if ($buffer <= 0) {
-                break;
-            }
-
-            $up++;
-            $down--;
-            $limit--;
-        }
-
-        return $max_distance;
-    }*/
 }
 
 // MetaphoneDictionary implies a dictionary which is sorted alphabetically by metaphone
-class MetaphoneDictionary extends Dictionary {
-    public function __construct($path) {
-        parent::__construct($path);
+class MetaphoneDictionaryFragment extends DictionaryFragment {
+    public function __construct($section) {
+        parent::__construct('./dictionary/M' . $section . '.json', $section);
     }
 
     // Input: key is the metaphone we're searching for. String.
@@ -460,10 +382,28 @@ else {
     $url .= '/'; 
 }
 
+// Load all the necessary dictionaries.
+// Get all first letters from the search terms.
+$first_letters = [];
+foreach ($terms as $term) {
+    $first_letters[] = $term[0];
+}
+// Remove duplicate entries and re-index the array following dupe removals.
+array_unique($first_letters);
+array_values($first_letters);
+
+// Create an array holding each dictionary
+$word_dictionaries = [];
+$meta_dictionaries = [];
+foreach($first_letters as $first_letter) {
+    $word_dictionaries[$first_letter] = new WordDictionaryFragment($first_letter);
+    $meta_dictionaries[$first_letter] = new MetaphoneDictionaryFragment($first_letter);
+}
+
 // Import English dictionary data to check and correct mis-spellings
-$word_dict = new WordDictionary("./wordSorted.json");
+//$word_dict = new WordDictionary("./wordSorted.json");
 // Import metaphone dictionary to find potential mis-spelling corrections
-$meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
+//$meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -542,9 +482,8 @@ try {
     foreach ($terms as $term) {
         // Loop to check if each term is english
         // Check if the word is english to check and see if we need to generate suggestions.
-        /*$word_match = $word_dict->search($term);
-        $isEnglish = $word_match !== -1;*/
-        $match = $word_dict->search($term);
+        $first_letter = $term[0];
+        $match = $word_dictionaries[$first_letter]->search($term);
         $isEnglish = $match['found'];
 
         // Then build up the keywords array to generate a large sql query
@@ -556,16 +495,16 @@ try {
             $response['hasMisspelling'] = true;
 
             // Try to find any possible suggestions around the index which the binary search failed.
-            $suggestion_indices = $word_dict->walk($match['index']);
-            $suggestions = $word_dict->indices_to_words($suggestion_indices);
+            $suggestion_indices = $word_dictionaries[$first_letter]->walk($match['index']);
+            $suggestions = $word_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
             foreach ($suggestions as $suggestion) {
                 $keywords[] = new Keyword($term, $i, $suggestion);
             }
 
             // Find a ballpark estimate of where the term should be using metaphones and walk around to find any potential matches.
-            $meta_match = $meta_dict->search(metaphone($term));
-            $suggestion_indices = $meta_dict->walk($meta_match['index']);
-            $suggestions = $meta_dict->indices_to_words($suggestion_indices);
+            $meta_match = $meta_dictionaries[$first_letter]->search(metaphone($term));
+            $suggestion_indices = $meta_dictionaries[$first_letter]->walk($meta_match['index']);
+            $suggestions = $meta_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
             // The first term in this suggestions array is one we've already added to keywords. Ignore that term using array_slice
             foreach (array_slice($suggestions, 1) as $suggestion) { 
                 $keywords[] = new Keyword($term, $i, $suggestion);
@@ -758,12 +697,6 @@ try {
         $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);
         $search_results[$page_id]->set_title($results[$i]['title']);
         $search_results[$page_id]->set_relevance($score_keeper->get_score($page_id));
-        
-        /*$search_results[$page_id] = new Result($page_id,
-                                       $urlNoPath . $results[$i]['path'], 
-                                       $results[$i]['title'], 
-                                       $snippet, 
-                                       $score_keeper->get_score($page_id));*/
     }
 
     // Sort the pages by their relevance score
