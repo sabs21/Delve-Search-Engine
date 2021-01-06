@@ -104,7 +104,7 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
 const boldSearchTerms = (str, searchTerms) => {
   let bolded = str;
   searchTerms.forEach(term => {
-    let innerRegex = " " + term + "(?=,| )";
+    let innerRegex = " " + term.keyword + "(?=,| )";
     let regex = new RegExp(innerRegex, "gi");
 
     // This loop adds the bold tags to every regex match it finds.
@@ -112,16 +112,25 @@ const boldSearchTerms = (str, searchTerms) => {
     let match = regex.exec(bolded);
     while (match) {
       let termStart = match.index + 1; // We add 1 because the regex includes a space at the beginning. Index.
-      let termEnd = termStart + term.length; // Index.
+      let termEnd = termStart + term.keyword.length; // Index.
       let firstHalf = bolded.substring(0, termStart); // Each half excludes the matched string.
+      //console.log("firstHalf", firstHalf);
       let secondHalf = bolded.substring(termEnd, bolded.length - 1);
+      //console.log("secondHalf", secondHalf);
       let termFromStr = bolded.substring(termStart, termEnd); // Getting the term like this preserves its uppercase and lowercase letters from the original string.
-      
+      //console.log("termFromStr", termFromStr);
+
       bolded = firstHalf + "<b>" + termFromStr + "</b>" + secondHalf;
       match = regex.exec(bolded); // Check if there are any more matches before the while condition is checked again.
     }
   });
   return bolded;
+}
+
+const formattedSnippets = (snippets) => {
+  snippets.forEach(snippet => {
+
+  })
 }
 
 // Input: searchData (what was obtained from the backend)
@@ -170,11 +179,30 @@ const createPageButtons = (searchData) => {
 // Output: None.
 // Populate the results container with results.
 const populate = (res, container) => {
+  
   res.results.forEach(result => {
+    // Format each snippet.
+    let formattedSnippets = [];
+    result.snippets.forEach((snippet, index) => {
+      //console.log("snippet: ", snippet);
+      //console.log("searchTerms: ", res.searchTerms);
+      formattedSnippets[index] = boldSearchTerms(snippet, res.searchTerms);
+    });
+
+    // Concatenate all formatted snippets into one.
+    let completeSnippet = '';
+    formattedSnippets.forEach(snippet => {
+      completeSnippet += snippet + ' ... ';
+    })
+    if (completeSnippet !== '') {
+      completeSnippet = completeSnippet.substring(0, completeSnippet.length - 6); // Remove the ending ' ... '
+    }
+    //console.log("completeSnippet", completeSnippet);
+
     let data = {
       url: result.url, 
       title: result.title, 
-      snippet: boldSearchTerms(result.snippet, res.searchTerms)
+      snippet: completeSnippet
     }
     //let resultElem = createResult(data);
     container.appendChild(createResult(data));

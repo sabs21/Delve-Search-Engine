@@ -312,15 +312,15 @@ class Result {
     public $page_id; // Unused for now
     public $url;
     public $title;
-    public $snippet;
+    public $snippets;
     //public $dupeTotals; // An array which holds every dupe_total for this given page
     public $relevance;
 
-    public function __construct($page_id, $url = NULL, $title = NULL, $snippet = NULL, $relevance = 0) {
+    public function __construct($page_id, $url = NULL, $title = NULL, $relevance = 0) {
         $this->page_id = $page_id;
         $this->url = $url;
         $this->title = $title;
-        $this->snippet = $snippet;
+        $this->snippets = [];
         //$this->dupeTotals = [];
         $this->relevance = $relevance;
     }
@@ -343,11 +343,14 @@ class Result {
         $this->title = $str;
     }
 
-    public function get_snippet() {
-        return $this->snippet;
+    public function get_snippet($i) {
+        return $this->snippets[$i];
     }
-    public function set_snippet($str) {
-        $this->snippet = $str;
+    public function get_all_snippets() {
+        return $this->snippets;
+    }
+    public function add_snippet($str) {
+        $this->snippets[] = $str;
     }
 
     public function get_relevance() {
@@ -520,10 +523,10 @@ try {
 
     // Display all keywords to be checked in the database.
     // DEBUGGING PURPOSES
-    $all_keywords = [];
+    /*$all_keywords = [];
     foreach ($keywords as $keyword) {
         $all_keywords[] = $keyword->get_keyword();
-    }
+    }*/
     $response['keywords'] = $keywords;
 
     // Tally each group of keywords with the same first letter
@@ -660,7 +663,20 @@ try {
             $inflated_score = count($terms) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
             //$phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
-            $search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
+            //$search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
+            
+            // ---------------------------------------------------------------------------------------------- //
+            // **** In order to get good snippets, I must rework how content is stored in the database. **** //
+            // -------------------------------------------------------------------------------------------- //
+
+            // Trim around the match index without going out of the string's bounds
+            $back = 0; // The substring before the match index
+            if (($exactMatchIndex - 100) > 0) {
+                $back = $exactMatchIndex - 50;
+            }
+            $snippet = substr($result['content'], $back, 200);
+
+            $search_results[$result['page_id']]->add_snippet($snippet);
         }
     }
 
@@ -684,9 +700,9 @@ try {
         $page_id = $results[$i]['page_id'];
 
         // Check if a snippet was already generated for this result.
-        $snippet = $search_results[$page_id]->get_snippet();
-        if ($snippet === NULL) {
-            $search_results[$page_id]->set_snippet($results[$i]['description']);
+        $snippet = $search_results[$page_id]->get_all_snippets();
+        if (empty($snippet) || $snippet === NULL) {
+            $search_results[$page_id]->add_snippet($results[$i]['description']);
         }
 
         $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);

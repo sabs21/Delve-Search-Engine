@@ -50,35 +50,52 @@ class Page {
   protected $keywords;
   protected $path;
   protected $title;
+  protected $headers;
   protected $desc;
 
   // $keywords is an array of objects.
   // $path is a string
-  public function __construct($path, $content, $keywords, $title, $desc) {
-    $this->content = $content;
+  public function __construct($path) {
+    $this->content = null;
+    $this->headers = null;
     $this->id = null;
-    $this->keywords = $keywords;
+    $this->keywords = null;
     $this->path = $path;
-    $this->title = $title;
-    $this->desc = $desc;
+    $this->title = null;
+    $this->desc = null;
   }
 
   public function get_path() {
     return $this->path;
   }
+  public function set_path($new_path) {
+    $this->path = $new_path;
+  }
 
   public function get_content() {
     return $this->content;
+  }
+  public function set_content($new_content) {
+    $this->content = $new_content;
+  }
+
+  public function get_headers() {
+    return $this->headers;
+  }
+  public function set_headers($new_headers) {
+    $this->headers = $new_headers;
   }
 
   public function get_keywords() {
     return $this->keywords;
   }
+  public function set_keywords($new_keywords) {
+    $this->keywords = $new_keywords;
+  }
 
   public function get_id() {
     return $this->id;
   }
-
   public function set_id($new_id) {
     $this->id = $new_id;
   }
@@ -86,7 +103,6 @@ class Page {
   public function get_title() {
     return $this->title;
   }
-
   public function set_title($new_title) {
     $this->title = $new_title;
   }
@@ -94,7 +110,6 @@ class Page {
   public function get_desc() {
     return $this->desc;
   }
-
   public function set_desc($new_desc) {
     $this->desc = $new_desc;
   }
@@ -144,7 +159,7 @@ $response = [
   'curl_error' => NULL,
   'pdo_error' => NULL,
   'db_error' => NULL,
-  'misc' => NULL
+  'misc' => []
 ];
 
 // Grab sitemap
@@ -188,7 +203,10 @@ $base_url = $urls[0];
 // Ensure that the base_url is not null so that each path to be inserted into the database is not formatted as a url.
 if (!is_null($base_url) && !empty($base_url)) {
   // Loop through and crawl each page to grab content.
-  foreach ($urls as $url) {
+  foreach ($urls as $index => $url) {
+    // Create a Page object and build it up each iteration.
+    $path = str_replace($base_url, '/', $url);
+    $page = new Page($path);
   //for ($i = 0; $i < 3; $i++) {
     // Begin cURL session
     //$curl_session = curl_init();
@@ -216,6 +234,16 @@ if (!is_null($base_url) && !empty($base_url)) {
     $keywords = get_keywords_from_all($dom);
     //$response['misc'] = get_all_content($dom);
     $page_content = get_all_content($dom);
+    $page->set_content($page_content);
+
+    // Ignore the homepage
+    if ($index !== 0) {
+      $main_content = get_main_content($dom->getElementById('dm_content'));
+      $headers = get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      //$response['misc'] = $headers;
+      $page->set_headers($headers);
+    }
+   
     //echo print_r($keywords);
     
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
@@ -223,6 +251,7 @@ if (!is_null($base_url) && !empty($base_url)) {
     $keywords = remove_empty_entries($keywords);
     sort($keywords, SORT_STRING);
     $keywords = array_unique_monitor_dupes($keywords);
+    $page->set_keywords($keywords);
 
     // Grab the title of the page and store it.
     $title = '';
@@ -230,16 +259,19 @@ if (!is_null($base_url) && !empty($base_url)) {
     if ($title_elem->length > 0) {
       $title = $title_elem->item(0)->textContent;
       $title = trim(sanitize($title));
+      $page->set_title($title);
     }
 
     // Grab the meta description to store it in the page object.
     $desc = get_description($dom);
+    $page->set_desc($desc);
     //$tester = $dom->getElementsByTagName('meta');
    // $response['misc'] = $tester->item(1)->textContent;
 
     // Create a new instance of Page and add it to the pages array
-    $path = str_replace($base_url, '/', $url);
-    $page = new Page($path, $page_content, $keywords, $title, $desc);
+    //$path = str_replace($base_url, '/', $url);
+    //$page = new Page($path, $page_content, $keywords, $title, $desc); // changed $page_content to $main_content
+    // Add the Page to the array
     $pages[] = $page;
   }
 
@@ -501,6 +533,7 @@ function get_keywords_from_all($dom) {
 // Input: DOMDocument object
 // Output: String of content.
 // Return all content except for the footer/header.
+// Useful for obtaining all keywords.
 function get_all_content($dom) {
   $content_wrapper = $dom->getElementById("site_content");
   // Get and format the text
@@ -508,6 +541,71 @@ function get_all_content($dom) {
   $content = strtolower($content);
   return sanitize($content);
 }
+
+// Input: DomDocument Element
+// Output: Node
+// Find element containing the most text which is:
+// 1) As deep as possible in the DOM.
+// 2) Contains headers and paragraphs.
+function get_main_content($top) {
+  $winner = $top;
+  $children = null;
+
+  // Start from the $top element. Scan each sibling to see which contains the most text and save it.
+  // When the winning element is found, save it and its level in the DOM, then move to its children and repeat.
+  while ($winner->hasChildNodes()) {
+    $children = $winner->childNodes;
+    $max = 0;
+    // This loop picks the element with the most text as the winner.
+    foreach($children as $element) {
+      // If this element is a text element, then we have found the deepest winner
+      if ($element->hasAttributes()) {
+        $is_text_elem = !is_null($element->attributes->getNamedItem("data-element-type"));
+        if ($is_text_elem) {
+          // Return the winner found in the previous iteration.
+          // NOTE: We can't simply call $winner since we could've overwritten it this iteration.
+          return $element->parentNode;
+        }
+      }
+
+      $length = strlen($element->textContent);
+      if ($max < $length) {
+        $max = $length;
+        $winner = $element;
+      }
+    }
+  }
+
+  return $winner;
+}
+
+// Input: DOMDocument Element
+//        Tag array
+// Output: Array
+// Get all text within the specified tags.
+function get_each_tag_contents($element, $tags = ['p']) {
+  $contents = [];
+  // For each tag, extract all text content.
+  foreach ($tags as $tag) {
+    $nodes = $element->getElementsByTagName($tag);
+    foreach ($nodes as $tag_elem) {
+      // This if statement prevents blank entries.
+      if (!empty($tag_elem->textContent)) {
+        $contents[$tag][] = $tag_elem->textContent;
+      }
+    } 
+  }
+  return $contents;
+}
+/*$headers = [];
+for ($i = 1; $i <= 6; $i++) {
+  $nodes = $main_content->getElementsByTagName('h'.$i);
+  foreach ($nodes as $element) {
+    if (!empty($element->textContent)) {
+      $headers['h'.$i][] = $element->textContent;
+    }
+  } 
+}*/
 
 // Input: String
 // Output: String containing only letters and numbers (ASCII)
