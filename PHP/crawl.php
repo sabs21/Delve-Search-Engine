@@ -523,7 +523,7 @@ try {
         $statement->bindValue($pdo_entry+2, $header->get_tag(), PDO::PARAM_LOB);  // Tag
         $statement->bindValue($pdo_entry+3, $header->get_text(), PDO::PARAM_LOB); // Header
         $pdo_entry += 4;
-        $header->set_id($pdo_entry / 4); // Set an ID for each header so that the header and the header's paragraph can get paired up in the database on the next sql call.
+        $header->set_id(($pdo_entry / 4) - 1); // Set an ID for each header so that the header and the header's paragraph can get paired up in the database on the next sql call.
       }
     }
   }
@@ -557,8 +557,8 @@ try {
 
   // PARAGRAPHS TABLE
   // Inserts all paragraphs into the database.
-  $pdo_str = create_pdo_placeholder_str(4, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO paragraphs (header_id, page_id, site_id, paragraph) VALUES ' . $pdo_str;
+  $pdo_str = create_pdo_placeholder_str(2, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO paragraphs (header_id, paragraph) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
   //$header_id = $first_header_id; // 
   $pdo_entry = 1;
@@ -571,11 +571,11 @@ try {
         // If so, write it to the database.
         if ($has_paragraph) {
           $header_id = $first_header_id + $header->get_id(); // Calculate the database header id.
-          $statement->bindValue($pdo_entry, $header_id, PDO::PARAM_INT);               // Header ID
-          $statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);            // Page ID
-          $statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
-          $statement->bindValue($pdo_entry+3, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
-          $pdo_entry += 4;
+          $statement->bindValue($pdo_entry, $header_id, PDO::PARAM_INT);                 // Header ID
+          //$statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);            // Page ID
+          //$statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
+          $statement->bindValue($pdo_entry+1, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
+          $pdo_entry += 2;
           //$first_header_id++;
         }
       }
@@ -752,10 +752,9 @@ function get_each_tag_contents($element, $tags = ['p']) {
 }
 
 // Input: DOMDocument Element
-//        Tag array
-// Output: Array
-// Get all text within the specified tags.
-function get_all_headers($element, $tags = ['p']) {
+// Output: Array of Header objects
+// Get all headers and their associated paragraphs.
+function get_all_headers($element) {
   $tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
   $headers = [];
   // For each header tag, extract all text content.
@@ -775,10 +774,14 @@ function get_all_headers($element, $tags = ['p']) {
             if ($is_text_elem) {
               $is_header = $nextElem->tagName === 'h1' && $nextElem->tagName === 'h2' && $nextElem->tagName === 'h3' && $nextElem->tagName === 'h4' && $nextElem->tagName === 'h5' && $nextElem->tagName === 'h6';
               if (!$is_header) {
-                $new_header->set_paragraph(trim($nextElem->textContent));
+                $paragraph = trim($nextElem->textContent);
+                $paragraph = preg_replace('/\s\s+/', ' ', $paragraph); // Remove excess whitespace
+                if ($paragraph !== '' && strlen($paragraph) > 100) {
+                  $new_header->set_paragraph($paragraph);
+                }
               }
-                $headers[] = $new_header;
-                break;
+              $headers[] = $new_header;
+              break;
             }
           }
           $nextElem = $nextElem->nextSibling;
