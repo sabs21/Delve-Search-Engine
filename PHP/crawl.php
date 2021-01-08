@@ -51,6 +51,7 @@ class Page {
   protected $path;
   protected $title;
   protected $headers;
+  protected $paragraphs;
   protected $desc;
 
   // $keywords is an array of objects.
@@ -60,6 +61,7 @@ class Page {
     $this->headers = null;
     $this->id = null;
     $this->keywords = null;
+    //$this->paragraphs = null;
     $this->path = $path;
     $this->title = null;
     $this->desc = null;
@@ -85,6 +87,13 @@ class Page {
   public function set_headers($new_headers) {
     $this->headers = $new_headers;
   }
+
+  /*public function get_paragraphs() {
+    return $this->paragraphs;
+  }
+  public function set_paragraphs($new_paragraphs) {
+    $this->paragraphs = $new_paragraphs;
+  }*/
 
   public function get_keywords() {
     return $this->keywords;
@@ -132,6 +141,56 @@ class Keyword {
 
   public function get_dupe_total () {
     return $this->dupe_total;
+  }
+}
+
+class Header {
+  public $element;
+  public $text;
+  public $tag;
+  //public $pos; // Location of this header within the main content.
+  public $paragraph; // Paragraph associated with this header.
+  public $id;
+
+  public function __construct($element, $tag) {
+    $this->element = $element;
+    $this->text = trim($element->textContent);
+    $this->tag = $tag;
+    //$this->pos = null;
+    $this->paragraph = null;
+    $this->id = null;
+  }
+
+  public function get_element() {
+    return $this->element;
+  }
+
+  public function get_text() {
+    return $this->text;
+  }
+  public function set_text($new_text) {
+    $this->text = $new_text;
+  }
+
+  public function get_tag() {
+    return $this->tag;
+  }
+  public function set_tag($new_tag) {
+    $this->tag = $new_tag;
+  }
+
+  public function get_id() {
+    return $this->id;
+  }
+  public function set_id($new_id) {
+    $this->id = $new_id;
+  }
+
+  public function get_paragraph() {
+    return $this->paragraph;
+  }
+  public function set_paragraph($new_paragraph) {
+    $this->paragraph = $new_paragraph;
   }
 }
 
@@ -239,8 +298,13 @@ if (!is_null($base_url) && !empty($base_url)) {
     // Ignore the homepage
     if ($index !== 0) {
       $main_content = get_main_content($dom->getElementById('dm_content'));
-      $headers = get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-      //$response['misc'] = $headers;
+      $headers = get_all_headers($main_content);//get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      if (isset($headers[0])) {
+        //if ($headers[0]->nodeType === XML_ELEMENT_NODE) {
+          $response['misc'] = ['header' => $headers[0]->get_text(), 'paragraph' => $headers[0]->get_paragraph()];
+        //}
+      }
+      
       $page->set_headers($headers);
     }
    
@@ -419,18 +483,107 @@ try {
 
   // CONTENTS TABLE
   // Inserts all new page content into the database.
-  $pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
+  //$pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
+  //$sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
+  //$statement = $pdo->prepare($sql);
+  //for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
+  //  $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
+  //  $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
+  //  $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
+  //}
+  //$statement->execute();
+
+  // Indicate that the contents of each page was inserted into the database successfully
+  //$response['inserted_into_contents'] = true;
+
+  // HEADERS TABLE
+  // Calculate total number of headers
+  $total_headers = 0;
+  foreach ($pages as $page) {
+    $headers = $page->get_headers();
+    if (!empty($headers)) {
+      $total_headers += count($headers);
+    }
+  }
+
+  $response['total_headers'] = $total_headers;
+
+  // HEADERS TABLE
+  // Inserts all headers into the database.
+  $pdo_str = create_pdo_placeholder_str(4, $total_headers); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO headers (page_id, site_id, tag, header) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
-  for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
-    $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
-    $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
-    $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
+  $pdo_entry = 1;
+  foreach ($pages as $page) {
+    $headers = $page->get_headers();
+    if (!empty($headers)) {
+      foreach ($headers as $header) {
+        $statement->bindValue($pdo_entry, $page->get_id(), PDO::PARAM_INT);       // Page ID
+        $statement->bindValue($pdo_entry+1, $site_id, PDO::PARAM_INT);            // Site ID
+        $statement->bindValue($pdo_entry+2, $header->get_tag(), PDO::PARAM_LOB);  // Tag
+        $statement->bindValue($pdo_entry+3, $header->get_text(), PDO::PARAM_LOB); // Header
+        $pdo_entry += 4;
+        $header->set_id($pdo_entry / 4); // Set an ID for each header so that the header and the header's paragraph can get paired up in the database on the next sql call.
+      }
+    }
   }
   $statement->execute();
 
-  // Indicate that the contents of each page was inserted into the database successfully
-  $response['inserted_into_contents'] = true;
+  $response['inserted_into_headers'] = true;
+
+  // HEADERS TABLE
+  // Grab first entry from the header insertion call.
+  $sql = 'SELECT MIN(header_id) FROM headers where site_id = ' . $site_id;
+  $statement = $pdo->prepare($sql);
+  $statement->execute();
+  $sql_res = $statement->fetch(); // Returns an array of indexed and associative results. Indexed is preferred.
+  $first_header_id = $sql_res[0];
+
+  $response['first_header_id'] = $first_header_id;
+
+  // Figure out how many paragraphs there are
+  $total_paragraphs = 0;
+  foreach ($pages as $page) {
+    $headers = $page->get_headers();
+    if (!empty($headers)) {
+      foreach ($headers as $header) {
+        $has_paragraph = !is_null($header->get_paragraph());
+        if ($has_paragraph) {
+          $total_paragraphs++;
+        }
+      }
+    }
+  }
+
+  // PARAGRAPHS TABLE
+  // Inserts all paragraphs into the database.
+  $pdo_str = create_pdo_placeholder_str(4, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO paragraphs (header_id, page_id, site_id, paragraph) VALUES ' . $pdo_str;
+  $statement = $pdo->prepare($sql);
+  //$header_id = $first_header_id; // 
+  $pdo_entry = 1;
+  foreach ($pages as $page) {
+    $headers = $page->get_headers();
+    if (!empty($headers)) {
+      foreach ($headers as $header) {
+        $has_paragraph = !is_null($header->get_paragraph());
+        // Check if this header has a paragraph tied to it.
+        // If so, write it to the database.
+        if ($has_paragraph) {
+          $header_id = $first_header_id + $header->get_id(); // Calculate the database header id.
+          $statement->bindValue($pdo_entry, $header_id, PDO::PARAM_INT);               // Header ID
+          $statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);            // Page ID
+          $statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
+          $statement->bindValue($pdo_entry+3, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
+          $pdo_entry += 4;
+          //$first_header_id++;
+        }
+      }
+    }
+  }
+  $statement->execute();
+ 
+  $response['inserted_into_paragraphs'] = true;
 
   $pdo->commit();
 } catch (Exception $e) {
@@ -597,15 +750,44 @@ function get_each_tag_contents($element, $tags = ['p']) {
   }
   return $contents;
 }
-/*$headers = [];
-for ($i = 1; $i <= 6; $i++) {
-  $nodes = $main_content->getElementsByTagName('h'.$i);
-  foreach ($nodes as $element) {
-    if (!empty($element->textContent)) {
-      $headers['h'.$i][] = $element->textContent;
-    }
-  } 
-}*/
+
+// Input: DOMDocument Element
+//        Tag array
+// Output: Array
+// Get all text within the specified tags.
+function get_all_headers($element, $tags = ['p']) {
+  $tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+  $headers = [];
+  // For each header tag, extract all text content.
+  foreach ($tags as $tag) {
+    $nodes = $element->getElementsByTagName($tag);
+    foreach ($nodes as $elem) {
+      // This if statement prevents blank entries.
+      if (!empty($elem->textContent)) {
+        $new_header = new Header($elem, $tag);
+        // Now that we have the header, find the paragraph associated with this header.
+        $nextElem = $elem->nextSibling;
+        while (!is_null($nextElem)) {
+          if ($nextElem->hasAttributes()) {
+            // If the next sibling is not a header AND is a text element (evidenced by the 'data-element-type' attribute), 
+            // then we have found a paragraph which is associated with this header.
+            $is_text_elem = !is_null($nextElem->attributes->getNamedItem("data-element-type"));
+            if ($is_text_elem) {
+              $is_header = $nextElem->tagName === 'h1' && $nextElem->tagName === 'h2' && $nextElem->tagName === 'h3' && $nextElem->tagName === 'h4' && $nextElem->tagName === 'h5' && $nextElem->tagName === 'h6';
+              if (!$is_header) {
+                $new_header->set_paragraph(trim($nextElem->textContent));
+              }
+                $headers[] = $new_header;
+                break;
+            }
+          }
+          $nextElem = $nextElem->nextSibling;
+        }
+      }
+    } 
+  }
+  return $headers;
+}
 
 // Input: String
 // Output: String containing only letters and numbers (ASCII)
