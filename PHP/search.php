@@ -349,8 +349,10 @@ class Result {
     public function get_all_snippets() {
         return $this->snippets;
     }
-    public function add_snippet($str) {
-        $this->snippets[] = $str;
+    // $str (String)
+    // $from_page_content (Boolean)
+    public function add_snippet($str, $from_page_content) {
+        $this->snippets[] = ["text" => $str, "fromPageContent" => $from_page_content];
     }
 
     public function get_relevance() {
@@ -606,7 +608,6 @@ try {
                     // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
                     $terms[$term_index] = $keyword;
                     break;
-
             }
         }
         $phrase .= $terms[$term_index]->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
@@ -649,7 +650,7 @@ try {
     //          How to increment the relevence score? $bins->add_bin($phraseHits['page_id'], $maxScore);
 
     // Obtain results based on the whole phrase
-    $sql = 'SELECT page_id, content FROM contents WHERE site_id = ?';
+    $sql = 'SELECT header_id, page_id, paragraph FROM paragraphs WHERE site_id = ?';
     $statement = $pdo->prepare($sql);
     $statement->execute([$site_id]);
     $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
@@ -658,25 +659,57 @@ try {
     //$phraseHits = [];
     foreach ($results as $result) {
         // Case-insensitive search for the needle (phrase) in the haystack (content)
-        $exactMatchIndex = stripos($result['content'], $phrase);
-        if ($exactMatchIndex !== false) {
+        $phraseMatchIndex = stripos($result['paragraph'], $phrase);
+        if ($phraseMatchIndex !== false) {
             $inflated_score = count($terms) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
-            //$phraseHits[$page_id][] = $exactMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
+            //$phraseHits[$page_id][] = $phraseMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
             //$search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
             
             // ---------------------------------------------------------------------------------------------- //
             // **** In order to get good snippets, I must rework how content is stored in the database. **** //
             // -------------------------------------------------------------------------------------------- //
 
-            // Trim around the match index without going out of the string's bounds
-            $back = 0; // The substring before the match index
-            if (($exactMatchIndex - 100) > 0) {
-                $back = $exactMatchIndex - 50;
+            $paragraph_length = strlen($result['paragraph']);
+            $charsFromPhrase = 140; // Amount of characters around the phrase to capture for the snippet.
+            $clipsAtStart = $phraseMatchIndex < $charsFromPhrase; // Check if we can get 140 characters before the phrase without going below zero.
+            $clipsAtEnd = $phraseMatchIndex + $charsFromPhrase > $paragraph_length; // Check if we can get 140 characters after the phrase without going past the snippet length.
+            $snippetStart = $phraseMatchIndex - $charsFromPhrase; // Starting index of the snippet
+            $snippetLength = $charsFromPhrase * 2; // Length of the snippet.
+            if ($clipsAtStart) {
+                $snippetStart = 0;
             }
-            $snippet = substr($result['content'], $back, 200);
+            if ($clipsAtEnd) {
+                $snippetLength = strlen($result['paragraph']) - $snippetStart;
+            }
+            $snippet = substr($result['paragraph'], $snippetStart, $snippetLength); // Get 140 characters after the phrase.
+            //$phraseHits[] = "snippetStart: " . $snippetStart;
+            //$phraseHits[] = "snippetLength: " . $snippetLength;
+            //$phraseHits[] = "snippet: " . $snippet;
 
-            $search_results[$result['page_id']]->add_snippet($snippet);
+            // Remove line breaks from snippet.
+            $brRegex = "/<br>/";
+            while (preg_match_all($brRegex, $snippet) > 0) {
+                // Find the index of the line break
+                $match = [];
+                preg_match($brRegex, $snippet, $match, PREG_OFFSET_CAPTURE);
+                $matchIndex = $match[0][1];
+
+                // Check whether the line break is to the left or right of the phrase. This info is useful for substringing the snippet properly.
+                $phraseIndex = stripos($snippet, $phrase);
+                if ($matchIndex < $phraseIndex) {
+                    // <br> is on the left of the phrase. __ signifies the ideal cutoff in the example below.
+                    // sample text.<br>__New line of text containing phrase...
+                    $matchIndex = $matchIndex + 4;
+                    $snippet = substr($snippet, $matchIndex, strlen($snippet) - $matchIndex);
+                }
+                else {
+                    // <br> is on the right of the phrase. __ signifies the ideal cutoff in the example below.
+                    // sample text containing phrase.__<br>New line of text...
+                    $snippet = substr($snippet, 0, $matchIndex);
+                }
+            }
+            $search_results[$result['page_id']]->add_snippet($snippet, true);
         }
     }
 
@@ -699,10 +732,11 @@ try {
     for ($i = 0; $i < count($results); $i++) {
         $page_id = $results[$i]['page_id'];
 
-        // Check if a snippet was already generated for this result.
-        $snippet = $search_results[$page_id]->get_all_snippets();
-        if (empty($snippet) || $snippet === NULL) {
-            $search_results[$page_id]->add_snippet($results[$i]['description']);
+        // Ensure that this result contains a snippet.
+        $snippets = $search_results[$page_id]->get_all_snippets();
+        if (empty($snippets) || $snippet === NULL) {
+            // If no snippet was made already, just use the page description as the snippet.
+            $search_results[$page_id]->add_snippet($results[$i]['description'], false);
         }
 
         $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);

@@ -557,8 +557,8 @@ try {
 
   // PARAGRAPHS TABLE
   // Inserts all paragraphs into the database.
-  $pdo_str = create_pdo_placeholder_str(2, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO paragraphs (header_id, paragraph) VALUES ' . $pdo_str;
+  $pdo_str = create_pdo_placeholder_str(4, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
+  $sql = 'INSERT INTO paragraphs (header_id, page_id, site_id, paragraph) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
   //$header_id = $first_header_id; // 
   $pdo_entry = 1;
@@ -572,10 +572,10 @@ try {
         if ($has_paragraph) {
           $header_id = $first_header_id + $header->get_id(); // Calculate the database header id.
           $statement->bindValue($pdo_entry, $header_id, PDO::PARAM_INT);                 // Header ID
-          //$statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);            // Page ID
-          //$statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
-          $statement->bindValue($pdo_entry+1, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
-          $pdo_entry += 2;
+          $statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);          // Page ID
+          $statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
+          $statement->bindValue($pdo_entry+3, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
+          $pdo_entry += 4;
           //$first_header_id++;
         }
       }
@@ -777,6 +777,17 @@ function get_all_headers($element) {
                 $paragraph = trim($nextElem->textContent);
                 $paragraph = preg_replace('/\s\s+/', ' ', $paragraph); // Remove excess whitespace
                 if ($paragraph !== '' && strlen($paragraph) > 100) {
+                  // We now know this is a valid paragraph.
+                  // Add in where new lines should be, then set the paragraph.
+                  $newLineRegex = "/[^ \.][.!?][^ \.]/";
+                  $matches = [];
+                  preg_match_all($newLineRegex, $paragraph, $matches, PREG_OFFSET_CAPTURE); // PREG_OFFET_CAPTURE allows me to get the indices of each match.
+                  $matches = $matches[0]; // Bypass an unnecessary layer of the array.
+                  for ($i = 0; $i < count($matches); $i++) {
+                    $match = $matches[$i][1];
+                    $matchIndex = $match + (2 + (4 * $i)); // With each index match, there's a 2 character offset to the left due to the regex. Also, for each <br> added, the length of the string increases by 4, so we must add 4 to each concurrent match in the $matches array.
+                    $paragraph = substr_replace($paragraph, "<br>", $matchIndex, 0);
+                  }
                   $new_header->set_paragraph($paragraph);
                 }
               }

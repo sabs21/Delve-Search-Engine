@@ -1,20 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <link rel="stylesheet" type="text/css" href="./CSS/stylesheet.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A development demo of the Duda Search Engine.">
+    <title>Duda Search Engine</title>
     <script src="./JS/main.js" type="application/javascript"></script>
   </head>
   <body>
     <div class="cardContainer">
       <div class="card">
-        <h4 class="inputHeader">Crawl</h4>
+        <label class="inputLabel" for="urlInput">Crawl</label>
         <input id='urlInput' class='searchInput' />
         <button id='newSite' class='searchSubmit'>New Site</button>
       </div>
       <div class="card">
-        <h4 class="inputHeader">Search</h4>
+        <label class="inputLabel" for="searchBar">Search</label>
         <input id='searchBar' class='searchInput' />
         <button id='searchButton' class='searchSubmit'>Search</button>
       </div> 
@@ -22,7 +24,7 @@
       <div class="card" style="margin-bottom: 50px;">
         <div id="titleBar" class="header">
           <h4 style="display:inline-block;">Search Results</h4>
-          <h6 id="pageMonitor"><i>Page <b id="currentPage">1</b> of <span id="totalPages">1</span></i></h6>
+          <p id="pageMonitor"><i>Page <b id="currentPage">1</b> of <span id="totalPages">1</span></i></p>
         </div>
         <div id="results">
           <img id="noResults" src="./CSS/sleeping.svg" alt="sleepy cloud" width="300" height="300">

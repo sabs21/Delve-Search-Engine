@@ -138,7 +138,7 @@ const formattedSnippets = (snippets) => {
 // Create the page buttons to sift through results.
 const createPageButtons = (searchData) => {
   // This is needed for creating the page turn event listeners
-  const results = document.getElementById("results");
+  const resultsElem = document.getElementById("results");
   //const searchPhrase = document.getElementById("searchBar").value;
 
   //let totalPages = Math.ceil(searchData.totalResults / 10);
@@ -157,8 +157,8 @@ const createPageButtons = (searchData) => {
       search(searchData.searchPhrase, "https://www.armorshieldroof.com/", page)
       .then(res => {
         console.log(res);
-        results.innerHTML = ""; // Clear out the old results to make room for the new.
-        populate(res, results); // Populate the results container with results.
+        resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
+        populate(res, resultsElem); // Populate the results container with results.
         setCurrentPage(res.page);
         setTotalPages(res.totalPages);
       })
@@ -186,17 +186,28 @@ const populate = (res, container) => {
     result.snippets.forEach((snippet, index) => {
       //console.log("snippet: ", snippet);
       //console.log("searchTerms: ", res.searchTerms);
-      formattedSnippets[index] = boldSearchTerms(snippet, res.searchTerms);
+      formattedSnippets[index] = {
+        text: boldSearchTerms(snippet.text, res.searchTerms),
+        fromPageContent: snippet.fromPageContent
+      };
     });
 
     // Concatenate all formatted snippets into one.
     let completeSnippet = '';
-    formattedSnippets.forEach(snippet => {
-      completeSnippet += snippet + ' ... ';
-    })
-    if (completeSnippet !== '') {
-      completeSnippet = completeSnippet.substring(0, completeSnippet.length - 6); // Remove the ending ' ... '
+    if (result.snippets[0]?.fromPageContent) {
+      // If the first part of the snippet is in the middle of the page's content, add ellipses at the beginning of the snippet.
+      completeSnippet = '... ';
     }
+    formattedSnippets.forEach(snippet => {
+      // Ensure that the snippet doesn't get too long (longer than 350 chars).
+      let newLength = completeSnippet.length + snippet.text.length;
+      if (newLength < 350) {
+        completeSnippet += snippet.text + '... ';
+      }
+    })
+    /*if (completeSnippet !== '') {
+      completeSnippet = completeSnippet.substring(0, completeSnippet.length - 6); // Remove the ending ' ... '
+    }*/
     //console.log("completeSnippet", completeSnippet);
 
     let data = {
