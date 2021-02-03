@@ -243,7 +243,7 @@ class ScoreKeeper {
 }
 
 class Keyword {
-    protected $original; // Original term that this keyword references.
+    public $original; // Original term that this keyword references.
     //protected $pages_found;
     public $keyword;
     public $term_index; // Index of the term which this keyword references.
@@ -413,18 +413,21 @@ foreach($first_letters as $first_letter) {
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
 $response = [
-    'time_taken' => NULL,
+    'db_error' => NULL,
+    'hasMisspelling' => false,
     'keywords' => NULL,
-    'site_exists' => false,
-    'searchPhrase' => NULL,
-    'searchTerms' => NULL,
+    'matched' => NULL,
+    'page' => $page_to_return + 1,
+    'pdo_error' => NULL,
+    'relevance_scores' => NULL,
     'results' => NULL,
+    'site_exists' => false,
+    'phrase' => NULL,
+    'terms' => NULL,
+    'time_taken' => NULL,
     'totalResults' => NULL,
     'totalPages' => NULL,
-    'page' => $page_to_return + 1,
-    'relevance_scores' => NULL,
-    'matched' => NULL,
-    'hasMisspelling' => false
+    'useful_keywords' => NULL,
 ];
 
 /////////////////////////////////
@@ -484,7 +487,7 @@ try {
 
     // Fill the keywords array with all possible keywords
     $i = 0;
-    foreach ($terms as $term) {
+    foreach ($terms as $key => $term) {
         // Loop to check if each term is english
         // Check if the word is english to check and see if we need to generate suggestions.
         $first_letter = $term[0];
@@ -598,24 +601,25 @@ try {
 
     // Re-index the keywords array to account for all of the removed entries.
     $keywords = array_values($keywords);
-    $response['array_val_keywords'] = $keywords;
+    $response['useful_keywords'] = $keywords;
 
     // Form a new search phrase to replace misspelled terms with best suggestions.
     $phrase = NULL;
     foreach ($terms as $term_index => $term) {
         foreach ($keywords as $keyword) {
+            // Find the first keyword which matches the given term_index. Replace the old term with the corrected term.
             if ($term_index === $keyword->get_term_index()) {
-                    // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
-                    $terms[$term_index] = $keyword;
-                    break;
+                // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
+                $terms[$term_index] = $keyword;
+                break;
             }
         }
         $phrase .= $terms[$term_index]->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
     }
     $phrase = substr($phrase, 0, -1); // Remove the space at the end.
 
-    $response['searchPhrase'] = $phrase;
-    $response['searchTerms'] = $terms;
+    $response['phrase'] = $phrase;
+    $response['terms'] = $terms;
 
     // Obtain all relevance scores and populate array of Results
     $search_results = []; // Contains all Results objects.
@@ -663,12 +667,6 @@ try {
         if ($phraseMatchIndex !== false) {
             $inflated_score = count($terms) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
-            //$phraseHits[$page_id][] = $phraseMatchIndex; // Note the index of where the match was in order to generate a more useful snippet.
-            //$search_results[$result['page_id']]->set_snippet('Replace this snippet with a nice snippet cutout around where the matching phrase was found.');
-            
-            // ---------------------------------------------------------------------------------------------- //
-            // **** In order to get good snippets, I must rework how content is stored in the database. **** //
-            // -------------------------------------------------------------------------------------------- //
 
             $paragraph_length = strlen($result['paragraph']);
             $charsFromPhrase = 140; // Amount of characters around the phrase to capture for the snippet.

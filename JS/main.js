@@ -98,12 +98,12 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
 }
 
 // Input: str is the string to bold all matching terms for.
-//        searchTerms is an array of words from the search phrase. 
+//        terms is an array of words from the search phrase. 
 // Output: String with bolded terms
 // Bold all terms from the search phrase in the given string
-const boldSearchTerms = (str, searchTerms) => {
+const boldSearchTerms = (str, terms) => {
   let bolded = str;
-  searchTerms.forEach(term => {
+  terms.forEach(term => {
     let innerRegex = " " + term.keyword + "(?=,| )";
     let regex = new RegExp(innerRegex, "gi");
 
@@ -154,7 +154,7 @@ const createPageButtons = (searchData) => {
     // Page turn listener
     pageButton.addEventListener("click", (e) => {
       let page = e.target.attributes[1].value;
-      search(searchData.searchPhrase, "https://www.armorshieldroof.com/", page)
+      search(searchData.phrase, "https://www.armorshieldroof.com/", page)
       .then(res => {
         console.log(res);
         resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
@@ -185,9 +185,9 @@ const populate = (res, container) => {
     let formattedSnippets = [];
     result.snippets.forEach((snippet, index) => {
       //console.log("snippet: ", snippet);
-      //console.log("searchTerms: ", res.searchTerms);
+      //console.log("terms: ", res.terms);
       formattedSnippets[index] = {
-        text: boldSearchTerms(snippet.text, res.searchTerms),
+        text: boldSearchTerms(snippet.text, res.terms),
         fromPageContent: snippet.fromPageContent
       };
     });
