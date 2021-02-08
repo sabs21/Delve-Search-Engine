@@ -23,9 +23,9 @@ html {
   flex: 1;
   background-color: white;
   border-radius: 10px;
-  box-shadow: 0px 1px 7px 0px rgba(0,0,0,0.42);
-  -webkit-box-shadow: 0px 1px 7px 0px rgba(0,0,0,0.42);
-  -moz-box-shadow: 0px 1px 7px 0px rgba(0,0,0,0.42);
+  box-shadow: 0px 1px 7px 0px rgba(0, 0, 0, 0.42);
+  -webkit-box-shadow: 0px 1px 7px 0px rgba(0, 0, 0, 0.42);
+  -moz-box-shadow: 0px 1px 7px 0px rgba(0, 0, 0, 0.42);
 }
 .header {
   margin-bottom: 5px;
@@ -62,6 +62,50 @@ button:hover {
 .inputLabel {
   display: block;
 }
+.badge {
+  height: 30px;
+  width: auto;
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 16px;
+  border: 1px solid grey;
+  padding: 0px 7px 3px 7px;
+  cursor: pointer;
+  transition: color 200ms ease, background-color 200ms ease;
+}
+.badge * {
+  pointer-events: none;
+}
+#suggestions {
+  margin: 20px 0px;
+}
+#otherSuggestions {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.suggestion {
+  background-color: transparent;
+  color: grey;
+}
+.suggestion:hover {
+  background-color: #b2e7c0;
+  color: black;
+}
+.searchedSuggestion {
+  color: black;
+}
+.m5 {
+  margin: 5px;
+}
+/*.m5:first-child {
+  margin-left: 0;
+}
+.m5:last-child {
+  margin-right: 0;
+}*/
 
 /* RESULTS */
 #results {
@@ -100,7 +144,8 @@ button:hover {
 #noResults {
   animation: 1.5s ease infinite alternate float;
 }
-#noResults, #noResultsText {
+#noResults,
+#noResultsText {
   margin-left: auto;
   margin-right: auto;
 }
@@ -117,7 +162,7 @@ button:hover {
   font-weight: normal;
   font-size: 13px;
   float: right;
-  color: rgb(74, 74, 74);;
+  color: rgb(74, 74, 74);
 }
 
 @keyframes float {
