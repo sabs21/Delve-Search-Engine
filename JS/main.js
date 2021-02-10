@@ -1,18 +1,24 @@
+class Node {
+  constructor(data) {
+    this.data = data;
+    this.children = [];
+  }
+}
+
 window.addEventListener("DOMContentLoaded", function() {
   const url = window.location.href;
   const results = document.getElementById("results");
   const pageBar = document.getElementById("pageBar");
 
   let input = document.getElementById("urlInput");
-  let newPageBtn = document.getElementById("newSite");
+  let crawlBtn = document.getElementById("newSite");
 
-  newPageBtn.addEventListener("click", (e) => {
+  crawlBtn.addEventListener("click", (e) => {
     console.log(input.value);
     if (input.value !== "") {
       crawl(input.value)
       .then(res => {
         console.log(res);
-        
       })
       .catch(err => {
         console.log("ERROR: ", err);
@@ -51,6 +57,24 @@ window.addEventListener("DOMContentLoaded", function() {
     }
   });
 });
+
+// Input: Data from backend
+// Output: Array of suggestions (Strings)
+const getSuggestions = (data) => {
+  let totalTerms = data.terms.length;
+  let terms = data.terms;
+  let suggestions = [];
+  data.keywords.forEach(keyword => {
+    //if 
+  });
+}
+
+const createSuggestionBadge = (suggestion) => {
+  let badge = document.createElement("span"); 
+  badge.className = "badge suggestion m5";
+  badge.innerText = suggestion;
+  return badge;
+}
 
 // Input: Object holding result metadata.
 // Output: Result element.
@@ -125,12 +149,6 @@ const boldSearchTerms = (str, terms) => {
     }
   });
   return bolded;
-}
-
-const formattedSnippets = (snippets) => {
-  snippets.forEach(snippet => {
-
-  })
 }
 
 // Input: searchData (what was obtained from the backend)

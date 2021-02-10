@@ -117,13 +117,13 @@ class WordDictionaryFragment extends DictionaryFragment {
         $results = [ $anchor ];
         $key = parent::word_at($anchor);
         $max_distance = ceil(strlen($key) / 2);
-        $limit = 100; // In case a lot of matches are found, limit the walk to x amount of matches.
-        $buffer = 25; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
+        $limit = 150; // In case a lot of matches are found, limit the walk to x amount of matches.
+        $buffer = 100; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
         
         // Check higher indices for more matches.
         $up = $anchor + 1;
         $down = $anchor - 1;
-        while ($limit > 0) {
+        while ($limit > 0 && $up < parent::length() && $down >= 0) {
             // Calculate the distance between the key and the words being walked on.
             $up_distance = levenshtein($key, parent::word_at($up));
             $down_distance = levenshtein($key, parent::word_at($down));
@@ -247,7 +247,8 @@ class Keyword {
     //protected $pages_found;
     public $keyword;
     public $term_index; // Index of the term which this keyword references.
-    public $is_suggestion;
+    public $has_misspelling; // Flag for whether the original keyword is misspelled.
+    public $has_suggestion;
     public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
     protected $max; // Maximum dupe_totals of this keyword in the database.
 
@@ -258,12 +259,14 @@ class Keyword {
         //$this->pages_found = [];
         if (isset($suggested)) {
             $this->keyword = $suggested;
-            $this->is_suggestion = true;
+            $this->has_suggestion = true;
+            $this->has_misspelling = true;
             $this->suggestion_distance = levenshtein($original, $suggested);
         }
         else {
             $this->keyword = $original;
-            $this->is_suggestion = false;
+            $this->has_suggestion = false;
+            $this->has_misspelling = false;
             $this->suggestion_distance = 0;
         }
     }
@@ -284,8 +287,32 @@ class Keyword {
         return $this->keyword;
     }
 
-    public function is_suggestion() {
-        return $this->is_suggestion;
+    public function set_keyword($new_keyword) {
+        if ($new_keyword !== $this->original) {
+            $this->keyword = $new_keyword;
+            $this->has_suggestion = true;
+            $this->suggestion_distance = levenshtein($this->original, $new_keyword);
+        }
+        else {
+            $this->keyword = $this->original;
+            $this->has_suggestion = false;
+            $this->suggestion_distance = 0;
+        }
+    }
+
+    public function has_suggestion($bool = null) {
+        if ($bool !== null) {
+            $this->has_suggestion = $bool;
+        }
+        return $this->has_suggestion;
+    }
+
+    // This refers to $original, not $keyword
+    public function has_misspelling($bool = null) {
+        if ($bool !== null) {
+            $this->has_misspelling = $bool;
+        }
+        return $this->has_misspelling;
     }
 
     public function get_max() {
@@ -377,6 +404,10 @@ $page_to_return = json_decode($raw)->page - 1; // This value will be used as an 
 // Remove unnecessary characters and seperate phrase into seperate terms
 $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
 $terms = explode(' ', $phrase);
+$original_keywords = [];
+foreach ($terms as $index => $term) {
+    $original_keywords[$index] = new Keyword($term, $index);
+}
 
 // Format the url which was recieved so that it does not end in '/'
 if ($url[strlen($url) - 1] === '/') {
@@ -393,6 +424,9 @@ $first_letters = [];
 foreach ($terms as $term) {
     $first_letters[] = $term[0];
 }
+/*foreach ($keywords as $keyword) {
+    $first_letters[] = $keyword->get_keyword()[0];
+}*/
 // Remove duplicate entries and re-index the array following dupe removals.
 array_unique($first_letters);
 array_values($first_letters);
@@ -487,11 +521,11 @@ try {
 
     // Fill the keywords array with all possible keywords
     $i = 0;
-    foreach ($terms as $key => $term) {
+    foreach ($original_keywords as $index => $original_keyword) {
         // Loop to check if each term is english
         // Check if the word is english to check and see if we need to generate suggestions.
-        $first_letter = $term[0];
-        $match = $word_dictionaries[$first_letter]->search($term);
+        $first_letter = $original_keyword->get_keyword()[0];
+        $match = $word_dictionaries[$first_letter]->search($original_keyword->get_keyword());
         $isEnglish = $match['found'];
 
         // Then build up the keywords array to generate a large sql query
@@ -501,25 +535,26 @@ try {
             
             // Indicate that this phrase contains a misspelling
             $response['hasMisspelling'] = true;
+            $original_keyword->has_misspelling(true);
 
             // Try to find any possible suggestions around the index which the binary search failed.
             $suggestion_indices = $word_dictionaries[$first_letter]->walk($match['index']);
             $suggestions = $word_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
             foreach ($suggestions as $suggestion) {
-                $keywords[] = new Keyword($term, $i, $suggestion);
+                $keywords[] = new Keyword($original_keyword->get_keyword(), $i, $suggestion);
             }
 
             // Find a ballpark estimate of where the term should be using metaphones and walk around to find any potential matches.
-            $meta_match = $meta_dictionaries[$first_letter]->search(metaphone($term));
+            $meta_match = $meta_dictionaries[$first_letter]->search(metaphone($original_keyword->get_keyword()));
             $suggestion_indices = $meta_dictionaries[$first_letter]->walk($meta_match['index']);
             $suggestions = $meta_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
             // The first term in this suggestions array is one we've already added to keywords. Ignore that term using array_slice
             foreach (array_slice($suggestions, 1) as $suggestion) { 
-                $keywords[] = new Keyword($term, $i, $suggestion);
+                $keywords[] = new Keyword($original_keyword->get_keyword(), $i, $suggestion);
             }
         } 
         else {
-            $keywords[] = new Keyword($term, $i);
+            $keywords[] = new Keyword($original_keyword->get_keyword(), $i);
         }
         $i++;
     }
@@ -532,7 +567,7 @@ try {
     foreach ($keywords as $keyword) {
         $all_keywords[] = $keyword->get_keyword();
     }*/
-    $response['keywords'] = $keywords;
+    $response['possible_keywords'] = $keywords;
 
     // Tally each group of keywords with the same first letter
     // Used to generate a big keyword search query
@@ -547,17 +582,17 @@ try {
             $total += 1;
         }
         else {
-            $groups[] = ['first_letter' => $first_letter, 'total' => $total];
+            $groups[] = ['first_letter' => $first_letter, 'total_keywords' => $total];
             $first_letter = $keyword[0];
             $total = 1;
         }
     }
-    $groups[] = ['first_letter' => $first_letter, 'total' => $total]; // Store the last group.
+    $groups[] = ['first_letter' => $first_letter, 'total_keywords' => $total]; // Store the last group.
 
     // Generate the sql query
     $sql = '';
     foreach ($groups as $group) {
-        $pdo_str = create_pdo_placeholder_str($group['total'], 1);
+        $pdo_str = create_pdo_placeholder_str($group['total_keywords'], 1);
         $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $group['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
     }
     // Remove the extra 'union ALL' from the end of the SQL string and replace it with an ORDER BY clause
@@ -580,7 +615,7 @@ try {
 
     // Determine which keywords are useful.
     foreach ($keywords as $key => $keyword) {
-        if (!$keyword->is_suggestion()) {
+        if (!$keyword->has_suggestion()) {
             continue;
         }
 
@@ -601,43 +636,48 @@ try {
 
     // Re-index the keywords array to account for all of the removed entries.
     $keywords = array_values($keywords);
-    $response['useful_keywords'] = $keywords;
+    $response['keywords'] = $keywords;
 
     // Form a new search phrase to replace misspelled terms with best suggestions.
     $phrase = NULL;
-    foreach ($terms as $term_index => $term) {
+    foreach ($original_keywords as $term_index => $original_keyword) {
+        //$keyword_found = false;
         foreach ($keywords as $keyword) {
             // Find the first keyword which matches the given term_index. Replace the old term with the corrected term.
             if ($term_index === $keyword->get_term_index()) {
                 // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
-                $terms[$term_index] = $keyword;
+                //$terms[$term_index] = $keyword;
+                $original_keyword->set_keyword($keyword->get_keyword());
+                //$keyword_found = true;
                 break;
             }
         }
-        $phrase .= $terms[$term_index]->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
+        //if ($keyword_found) {
+        $phrase .= $original_keyword->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
+        //}
     }
     $phrase = substr($phrase, 0, -1); // Remove the space at the end.
 
     $response['phrase'] = $phrase;
-    $response['terms'] = $terms;
+    $response['terms'] = $original_keywords;
 
     // Obtain all relevance scores and populate array of Results
     $search_results = []; // Contains all Results objects.
     $score_keeper = new ScoreKeeper();
     foreach ($results as $result) {
         $page_id = $result['page_id'];
-        $search_results[$page_id] = new Result($page_id);
-        foreach ($terms as $term) {
-            $keywords_match = $result['keyword'] === $term->get_keyword();
-            $has_max = $term->get_max() !== null;
+        
+        foreach ($original_keywords as $original_keyword) {
+            $keywords_match = $result['keyword'] === $original_keyword->get_keyword();
+            $has_max = $original_keyword->get_max() !== null;
             // Storing this max will come in handy when calculating relevance scores.
             if ($keywords_match) {
                 if (!$has_max) {
                     // Store max dupe_total for this keyword
-                    $term->set_max($result['dupe_total']);
+                    $original_keyword->set_max($result['dupe_total']);
                 }
-
-                $score = $term->relevance($result['dupe_total']);
+                $search_results[$page_id] = new Result($page_id);
+                $score = $original_keyword->relevance($result['dupe_total']);
                 $score_keeper->add_to_score($score, $page_id);
                 break;
             }
@@ -665,7 +705,7 @@ try {
         // Case-insensitive search for the needle (phrase) in the haystack (content)
         $phraseMatchIndex = stripos($result['paragraph'], $phrase);
         if ($phraseMatchIndex !== false) {
-            $inflated_score = count($terms) * 100;
+            $inflated_score = count($original_keywords) * 100;
             $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
 
             $paragraph_length = strlen($result['paragraph']);
