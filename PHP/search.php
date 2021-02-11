@@ -117,8 +117,8 @@ class WordDictionaryFragment extends DictionaryFragment {
         $results = [ $anchor ];
         $key = parent::word_at($anchor);
         $max_distance = ceil(strlen($key) / 2);
-        $limit = 150; // In case a lot of matches are found, limit the walk to x amount of matches.
-        $buffer = 100; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
+        $limit = 1000; // In case a lot of matches are found, limit the walk to x amount of matches.
+        $buffer = 1000; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
         
         // Check higher indices for more matches.
         $up = $anchor + 1;
@@ -660,6 +660,43 @@ try {
 
     $response['phrase'] = $phrase;
     $response['terms'] = $original_keywords;
+
+    // Generate all possible suggestions
+    $build_up = []; // Collects keywords as we go through term indices. As we go, we build on what's in this array to eventually form all possible suggestions.
+    foreach ($original_keywords as $term_index => $original_keyword) {
+        $found_suggestion = false;
+        $len = count($build_up);
+        $total_terms = count($original_keywords);
+        //$fragments = [];
+        foreach ($keywords as $keyword) {
+            //$fragments = [];
+            // Collect all keywords for this current $term_index value.
+            if ($keyword->get_term_index() === $term_index) {
+                $found_suggestion = true;
+                if ($len <= 0) {
+                    $build_up[] = $keyword->get_keyword();
+                }
+                else {
+                    // Add new suggestions which build on what's already in the build_up array.
+                    for ($i = 0; $i < $len; $i++) {
+                        $build_up[] = $build_up[$i] . " " . $keyword->get_keyword();
+                    }
+                }
+            }
+        }
+        if (!$found_suggestion && $len <= 0) {
+            $build_up[] = $original_keyword->get_keyword();
+        }
+    }
+    // Extract all suggestions which are of the correct length.
+    $suggestions = [];
+    for ($i = 0; $i < count($build_up); $i++) {
+        $total_terms = count(explode(' ', $build_up[$i]));
+        if ($total_terms >= count($original_keywords)) {
+            $suggestions[] = $build_up[$i];
+        }
+    }
+    $response['suggestions'] = $suggestions;
 
     // Obtain all relevance scores and populate array of Results
     $search_results = []; // Contains all Results objects.
