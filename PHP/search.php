@@ -20,202 +20,6 @@ ini_set('display_errors', 1);
 // CLASS DEFINITIONS //
 //////////////////////
 
-class DictionaryFragment {
-    public $dict; // The imported dictionary json.
-    public $section; // Letter which all words begin with.
-
-    public function __construct($path, $section) {
-        $json = file_get_contents($path);
-        $this->dict = json_decode($json, TRUE);
-        $this->$section = $section;
-    }
-
-    protected function get_dict() {
-        return $this->dict;
-    }
-
-    protected function get_section() {
-        return $this->section;
-    }
-
-    public function word_at($index) {
-        return $this->dict[$index]['word'];
-    }
-
-    public function metaphone_at($index) {
-        return $this->dict[$index]['metaphone'];
-    }
-
-    public function length() {
-        return count($this->dict);
-    }
-
-    public function indices_to_words($arr) {
-        $result = [];
-
-        for ($i = 0; $i < count($arr); $i++) {
-            $result[$i] = $this->dict[$arr[$i]]['word'];
-        }
-
-        return $result;
-    }
-
-    public function indices_to_metaphones($arr) {
-        $result = [];
-
-        for ($i = 0; $i < count($arr); $i++) {
-            $result[$i] = $this->dict[$arr[$i]]['metaphone'];
-        }
-
-        return $result;
-    }
-}
-
-// WordDictionary implies a dictionary which is sorted alphabetically by word
-class WordDictionaryFragment extends DictionaryFragment {
-    public function __construct($section) {
-        parent::__construct('./dictionary/W' . $section . '.json', $section);
-    }
-
-    // Input: key is the word we're searching for
-    // Output: Array containing a flag stating if an exact match was found, and the index of the match.
-    // Perform a binary search for a given term based on a word.
-    public function search($key) {
-        //$arr = parent::get_dict();
-        $l = 0;
-        $h = parent::length();
-        $mid = ceil($l + ($h - $l) / 2); 
-
-        while ($h >= $l) {
-            // If the element is present at the middle itself 
-            if (parent::word_at($mid) === $key) {
-                return ['found' => true, 'index' => floor($mid)]; 
-            }
-    
-            // If element is smaller than mid, then 
-            // it can only be present in left subarray 
-            if (parent::word_at($mid) > $key) {
-                $h = $mid - 1;
-            }
-            else {
-                // Else the element can only be present in right subarray 
-                $l = $mid + 1;
-            }
-
-            $mid = ceil($l + ($h - $l) / 2);
-        }
-    
-        // We reach here when element is not present in array 
-        return ['found' => false, 'index' => $mid];
-    }
-
-    // Input: anchor is the index of a word which we want to find more of around it.
-    // Output: Array of indices of words with a short levenshtein distance to the word at the anchor.
-    // For the metaphone sorted dictionaries
-    // Returns an array of indices of words which contain the same metaphone as the word at the given index
-    public function walk($anchor) {
-        $results = [ $anchor ];
-        $key = parent::word_at($anchor);
-        $max_distance = ceil(strlen($key) / 2);
-        $limit = 1000; // In case a lot of matches are found, limit the walk to x amount of matches.
-        $buffer = 1000; // Bypass x amount of words with long postfixes in an attempt to find more potential suggestions in "harder to reach" places.
-        
-        // Check higher indices for more matches.
-        $up = $anchor + 1;
-        $down = $anchor - 1;
-        while ($limit > 0 && $up < parent::length() && $down >= 0) {
-            // Calculate the distance between the key and the words being walked on.
-            $up_distance = levenshtein($key, parent::word_at($up));
-            $down_distance = levenshtein($key, parent::word_at($down));
-
-            // Check if the higher index is a possible suggestion
-            if ($up_distance < $max_distance) {
-                $results[] = $up;
-            }
-            else {
-                $buffer--;
-            }
-
-            // Check if the lower index is a possible suggestion
-            if ($down_distance < $max_distance) {
-                $results[] = $down;
-            }
-            else {
-                $buffer--;
-            }
-
-            // If there's no more buffer room, break from the loop.
-            if ($buffer <= 0) {
-                break;
-            }
-
-            $up++;
-            $down--;
-            $limit--;
-        }
-
-        return $results;
-    }
-}
-
-// MetaphoneDictionary implies a dictionary which is sorted alphabetically by metaphone
-class MetaphoneDictionaryFragment extends DictionaryFragment {
-    public function __construct($section) {
-        parent::__construct('./dictionary/M' . $section . '.json', $section);
-    }
-
-    // Input: key is the metaphone we're searching for. String.
-    // Output: Array containing a flag stating if an exact match was found, and the index of the match.
-    // Perform a binary search for a given term based on a metaphone.
-    public function search($key) {
-        $l = 0;
-        $h = parent::length();
-
-        while ($h >= $l) {
-            $mid = ceil($l + ($h - $l) / 2); 
-    
-            // If the element is present at the middle itself 
-            if (parent::metaphone_at($mid) === $key) {
-                return ['found' => true, 'index' => floor($mid)]; 
-            }
-    
-            // If element is smaller than mid, then 
-            // it can only be present in left subarray 
-            if (parent::metaphone_at($mid) > $key) {
-                $h = $mid - 1;
-            }
-            else {
-                // Else the element can only be present in right subarray 
-                $l = $mid + 1;
-            }
-        }
-    
-        // We reach here when element is not present in array 
-        return ['found' => false, 'index' => floor($mid)];
-    }
-
-    // Input: anchor is the index of a metaphone we want to explore around.
-    // Output: Array of indices that contain matching metaphones in the dictionary.
-    // For the metaphone sorted dictionaries
-    // Returns an array of indices of words which contain the same metaphone as the word at the given index
-    public function walk($anchor) {
-        $results = [ $anchor ];
-        $key = parent::metaphone_at($anchor);
-
-        // Check higher indices for more matches.
-        for ($i = $anchor + 1; parent::metaphone_at($i) == $key; $i++) {
-            $results[] = $i;
-        }
-
-        // Check lower indices for more matches.
-        for ($j = $anchor - 1; parent::metaphone_at($j) == $key; $j--) {
-            $results[] = $j;
-        }
-    
-        return $results;
-    }
-}
-
 // Consider replacing relevance array with a ScoreKeeper class.
 class ScoreKeeper {
     protected $scores;
@@ -390,6 +194,97 @@ class Result {
     }
 }
 
+// This dictionary is created from the website's keywords.
+// The purpose of this over a traditional dictionary is better suggestions.
+class LocalDictionary {
+    public $dict;
+    public $section; // Letter which all words begin with.
+
+    public function __construct() {
+        //$json = file_get_contents($path);
+        $this->dict = null;//json_decode($json, TRUE);
+        $this->section = null;
+    }
+
+    // All dictionaries must be created before they are retrieved.
+    public function create_dictionary($pdo, $site_id, $first_letter) {
+        try {
+            $sql = 'SELECT DISTINCT keyword FROM keywords_' . $first_letter . ' WHERE site_id = ? ORDER BY keyword ASC;';
+            $statement = $pdo->prepare($sql);
+            $statement->execute([$site_id]);
+            $this->dict = $statement->fetchAll();
+            $this->section = $first_letter;
+            return true;
+        } 
+        catch (Exception $e) {
+            // Our database queries has failed.
+            // Print out the error message.
+            //$response['db_error'] = $e->getMessage();
+            return false;
+        }
+    }
+
+    public function get_dictionary() {
+        return $this->dict;
+    }
+
+    public function word_at($index) {
+        return $this->dict[$index]['keyword'];
+    }
+
+    public function length() {
+        return count($this->dict);
+    }
+
+    // Input: key is the word we're searching for
+    // Output: Array containing a flag stating if an exact match was found, and the index of the match.
+    // Perform a binary search for a given term based on a word.
+    public function search($key) {
+        //$arr = parent::get_dict();
+        $l = 0;
+        $h = $this->length();
+        $mid = ceil($l + ($h - $l) / 2); 
+
+        while ($h >= $l) {
+            // If the element is present at the middle itself 
+            if ($this->word_at($mid) === $key) {
+                return floor($mid); 
+            }
+    
+            // If element is smaller than mid, then 
+            // it can only be present in left subarray 
+            if ($this->word_at($mid) > $key) {
+                $h = $mid - 1;
+            }
+            else {
+                // Else the element can only be present in right subarray 
+                $l = $mid + 1;
+            }
+
+            $mid = ceil($l + ($h - $l) / 2);
+        }
+    
+        // We reach here when element is not present in array 
+        return false;
+    }
+
+    // Input: word (String)
+    //        term_index (Integer)
+    // Output: Array of Keyword objects
+    // Find similar words to the word given.
+    public function similar_to($word, $term_index) {
+        $similar_words = [];
+        $max_distance = 1; // Maximum allowed levenshtein distance
+        foreach ($this->get_dictionary() as $entry) {
+            $distance = levenshtein($word, $entry['keyword']);
+            if ($distance <= $max_distance) {
+                $similar_words[] = new Keyword($word, $term_index, $entry['keyword']);
+            }
+        }
+        return $similar_words;
+    }
+}
+
 /////////////////////
 // INITIALIZATION //
 ///////////////////
@@ -417,32 +312,6 @@ if ($url[strlen($url) - 1] === '/') {
 else {
     $url .= '/'; 
 }
-
-// Load all the necessary dictionaries.
-// Get all first letters from the search terms.
-$first_letters = [];
-foreach ($terms as $term) {
-    $first_letters[] = $term[0];
-}
-/*foreach ($keywords as $keyword) {
-    $first_letters[] = $keyword->get_keyword()[0];
-}*/
-// Remove duplicate entries and re-index the array following dupe removals.
-array_unique($first_letters);
-array_values($first_letters);
-
-// Create an array holding each dictionary
-$word_dictionaries = [];
-$meta_dictionaries = [];
-foreach($first_letters as $first_letter) {
-    $word_dictionaries[$first_letter] = new WordDictionaryFragment($first_letter);
-    $meta_dictionaries[$first_letter] = new MetaphoneDictionaryFragment($first_letter);
-}
-
-// Import English dictionary data to check and correct mis-spellings
-//$word_dict = new WordDictionary("./wordSorted.json");
-// Import metaphone dictionary to find potential mis-spelling corrections
-//$meta_dict = new MetaphoneDictionary("./metaphoneSorted.json");
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -520,53 +389,26 @@ try {
     $keywords = [];
 
     // Fill the keywords array with all possible keywords
-    $i = 0;
     foreach ($original_keywords as $index => $original_keyword) {
-        // Loop to check if each term is english
-        // Check if the word is english to check and see if we need to generate suggestions.
         $first_letter = $original_keyword->get_keyword()[0];
-        $match = $word_dictionaries[$first_letter]->search($original_keyword->get_keyword());
-        $isEnglish = $match['found'];
+        $dict = new LocalDictionary();
+        $dict->create_dictionary($pdo, $site_id, $first_letter);
+        $is_english = $dict->search($original_keyword->get_keyword());
 
-        // Then build up the keywords array to generate a large sql query
-        if (!$isEnglish) {
-            // Formulate the suggestions array, 
-            // Then put suggestions into keywords array.
-            
+        if (!$is_english) {
             // Indicate that this phrase contains a misspelling
             $response['hasMisspelling'] = true;
             $original_keyword->has_misspelling(true);
 
-            // Try to find any possible suggestions around the index which the binary search failed.
-            $suggestion_indices = $word_dictionaries[$first_letter]->walk($match['index']);
-            $suggestions = $word_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
-            foreach ($suggestions as $suggestion) {
-                $keywords[] = new Keyword($original_keyword->get_keyword(), $i, $suggestion);
-            }
-
-            // Find a ballpark estimate of where the term should be using metaphones and walk around to find any potential matches.
-            $meta_match = $meta_dictionaries[$first_letter]->search(metaphone($original_keyword->get_keyword()));
-            $suggestion_indices = $meta_dictionaries[$first_letter]->walk($meta_match['index']);
-            $suggestions = $meta_dictionaries[$first_letter]->indices_to_words($suggestion_indices);
-            // The first term in this suggestions array is one we've already added to keywords. Ignore that term using array_slice
-            foreach (array_slice($suggestions, 1) as $suggestion) { 
-                $keywords[] = new Keyword($original_keyword->get_keyword(), $i, $suggestion);
-            }
-        } 
-        else {
-            $keywords[] = new Keyword($original_keyword->get_keyword(), $i);
+            // Merge these new suggestions with all previous ones.
+            $keywords = array_merge($keywords, $dict->similar_to($original_keyword->get_keyword(), $index));
         }
-        $i++;
+        else {
+            $keywords[] = $original_keyword;
+        }
     }
 
     usort($keywords, 'nat_keyword_cmp');
-
-    // Display all keywords to be checked in the database.
-    // DEBUGGING PURPOSES
-    /*$all_keywords = [];
-    foreach ($keywords as $keyword) {
-        $all_keywords[] = $keyword->get_keyword();
-    }*/
     $response['possible_keywords'] = $keywords;
 
     // Tally each group of keywords with the same first letter
@@ -609,34 +451,7 @@ try {
 
     $response['mass_query_results'] = $results;
 
-    // Now we can find out which Keywords are useful and which are not.
-
     usort($keywords, 'keyword_distance_cmp');
-
-    // Determine which keywords are useful.
-    foreach ($keywords as $key => $keyword) {
-        if (!$keyword->has_suggestion()) {
-            continue;
-        }
-
-        $is_good_suggestion = false;
-        foreach ($results as $result) {
-            // If this keyword is found in the database search results, then it's a good suggestion.
-            if ($result['keyword'] === $keyword->get_keyword()) {
-                $is_good_suggestion = true;
-                break;
-            }
-        }
-
-        if (!$is_good_suggestion) {
-            //$keyword->set_as_suggestion(false);
-            unset($keywords[$key]); // Remove the entry from the keywords array.
-        }
-    }
-
-    // Re-index the keywords array to account for all of the removed entries.
-    $keywords = array_values($keywords);
-    $response['keywords'] = $keywords;
 
     // Form a new search phrase to replace misspelled terms with best suggestions.
     $phrase = NULL;
@@ -662,38 +477,49 @@ try {
     $response['terms'] = $original_keywords;
 
     // Generate all possible suggestions
-    $build_up = []; // Collects keywords as we go through term indices. As we go, we build on what's in this array to eventually form all possible suggestions.
+    $fragments = []; // Collects keywords as we go through term indices. As we go, we build on what's in this array to eventually form all possible suggestions.
     foreach ($original_keywords as $term_index => $original_keyword) {
-        $found_suggestion = false;
-        $len = count($build_up);
-        $total_terms = count($original_keywords);
-        //$fragments = [];
-        foreach ($keywords as $keyword) {
-            //$fragments = [];
-            // Collect all keywords for this current $term_index value.
-            if ($keyword->get_term_index() === $term_index) {
-                $found_suggestion = true;
-                if ($len <= 0) {
-                    $build_up[] = $keyword->get_keyword();
+        $total_fragments = count($fragments);
+        if (!$original_keyword->has_suggestion()) {
+            if ($total_fragments > 0) {
+                // Apply this term to every suggestion currently within the fragments array
+                for ($i = 0; $i < $total_fragments; $i++) {
+                    $fragments[] = $fragments[$i] . " " . $original_keyword->get_keyword();
                 }
-                else {
-                    // Add new suggestions which build on what's already in the build_up array.
-                    for ($i = 0; $i < $len; $i++) {
-                        $build_up[] = $build_up[$i] . " " . $keyword->get_keyword();
+            }
+            else {
+                // Add the original term input by the user since we did not find a replacement for this term.
+                $fragments[] = $original_keyword->get_keyword();
+            }
+        }
+        else {
+            $found_suggestion = false;
+            foreach ($keywords as $keyword) {
+                // Collect all keywords for this current $term_index value.
+                if ($keyword->get_term_index() === $term_index) {
+                    $found_suggestion = true;
+                    if ($total_fragments > 0) {
+                        // Apply this term to every suggestion currently within the fragments array
+                        for ($i = 0; $i < $total_fragments; $i++) {
+                            $fragments[] = $fragments[$i] . " " . $keyword->get_keyword();
+                        }
+                    }
+                    else {
+                        $fragments[] = $keyword->get_keyword();
                     }
                 }
             }
-        }
-        if (!$found_suggestion && $len <= 0) {
-            $build_up[] = $original_keyword->get_keyword();
+            if (!$found_suggestion) {
+                $fragments[] = $original_keyword->get_keyword();
+            }
         }
     }
     // Extract all suggestions which are of the correct length.
     $suggestions = [];
-    for ($i = 0; $i < count($build_up); $i++) {
-        $total_terms = count(explode(' ', $build_up[$i]));
+    for ($i = 0; $i < count($fragments); $i++) {
+        $total_terms = count(explode(' ', $fragments[$i]));
         if ($total_terms >= count($original_keywords)) {
-            $suggestions[] = $build_up[$i];
+            $suggestions[] = $fragments[$i];
         }
     }
     $response['suggestions'] = $suggestions;
@@ -703,7 +529,6 @@ try {
     $score_keeper = new ScoreKeeper();
     foreach ($results as $result) {
         $page_id = $result['page_id'];
-        
         foreach ($original_keywords as $original_keyword) {
             $keywords_match = $result['keyword'] === $original_keyword->get_keyword();
             $has_max = $original_keyword->get_max() !== null;
