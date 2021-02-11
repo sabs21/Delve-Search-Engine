@@ -274,7 +274,7 @@ class LocalDictionary {
     // Find similar words to the word given.
     public function similar_to($word, $term_index) {
         $similar_words = [];
-        $max_distance = 1; // Maximum allowed levenshtein distance
+        $max_distance = 2; // Maximum allowed levenshtein distance
         foreach ($this->get_dictionary() as $entry) {
             $distance = levenshtein($word, $entry['keyword']);
             if ($distance <= $max_distance) {
@@ -295,6 +295,7 @@ $url = json_decode($raw)->url;
 $urlNoPath = $url;
 $phrase = trim(json_decode($raw)->phrase); // This phrase will get replaced after spellchecking is complete.
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
+$site_id = NULL;
 
 // Remove unnecessary characters and seperate phrase into seperate terms
 $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
@@ -330,6 +331,7 @@ $response = [
     'time_taken' => NULL,
     'totalResults' => NULL,
     'totalPages' => NULL,
+    'url' => $url,
     'useful_keywords' => NULL,
 ];
 
@@ -369,14 +371,12 @@ try {
     }
 
     // Grab relevant site_id from recent call
-    $pdo->beginTransaction();
     $sql = 'SELECT site_id FROM sites WHERE url = ?';
     $statement = $pdo->prepare($sql);
     $statement->execute([$url]);
     $sql_res = $statement->fetch(); // Returns an array of *indexed and associative results. Indexed is preferred.
 
     // Check existence of site in database
-    $site_id = NULL;
     if ($sql_res) {
         $site_id = $sql_res['site_id'];
         $response['site_exists'] = true;
@@ -518,7 +518,8 @@ try {
     $suggestions = [];
     for ($i = 0; $i < count($fragments); $i++) {
         $total_terms = count(explode(' ', $fragments[$i]));
-        if ($total_terms >= count($original_keywords)) {
+        $is_search_phrase = strcmp($fragments[$i], $phrase) === 0; // There's no point suggesting the search phrase that the user just used. Hence we filter it out of the suggestions array.
+        if ($total_terms >= count($original_keywords) && !$is_search_phrase) {
             $suggestions[] = $fragments[$i];
         }
     }
@@ -659,6 +660,29 @@ catch (Exception $e) {
     $response['db_error'] = $e->getMessage();
 }
 
+// Store the search that was made by the user
+if ($page_to_return === 0) { // Only store searches that land on the first page.
+    try {
+        $pdo->beginTransaction();
+        $sql = 'INSERT INTO searches (site_id, search_phrase) VALUES (?, ?)';
+        $statement = $pdo->prepare($sql);
+        $statement->bindValue(1, $site_id, PDO::PARAM_INT);
+        $statement->bindValue(2, $phrase, PDO::PARAM_STR);
+        $statement->execute();
+        $pdo->commit();
+    }
+    catch (Exception $e) {
+        // One of our database queries have failed.
+        // Print out the error message.
+        //echo $e->getMessage();
+        $response['db_error'] = $e->getMessage();
+        // Rollback the transaction.
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+    }
+}
+
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
 $response['time_taken'] = $end - $begin;
@@ -755,29 +779,3 @@ function keyword_distance_cmp($a, $b) {
     }
     return ($a_dist < $b_dist) ? -1 : 1;
 }
-
-// Input: A keyword string.
-//        A PDO instance.
-// Output: Boolean.
-// Determine whether or not a keyword is within the sites content.
-/*function findKeyword($keyword, $pdo) {
-    $sql = 'SELECT keyword FROM keywords_' . $keyword[0] . ' WHERE keyword = ?';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$keyword]);
-    $result = $statement->fetch();
-
-    // If $result contains ANYTHING, we know we've found a match and that the keyword exists.
-    if (count($result) > 0) {
-        return true;
-    }
-    else {
-        return false;
-    }
-}*/
-
-//if (isset($keyword[1])) { // If the word is longer than 1 letter, then it can be considered a keyword.
-/*
-if (!isset($keyword[0]) || $keyword[0] === 'a' || $keyword[0] === 'i') {
-    return true;
-}
-*/

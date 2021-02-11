@@ -80,6 +80,7 @@ button:hover {
 }
 #suggestions {
   margin: 20px 0px;
+  transition: opacity 200ms ease;
 }
 #otherSuggestions {
   position: relative;
@@ -94,7 +95,7 @@ button:hover {
   background-color: #b2e7c0;
   color: black;
 }
-.searchedSuggestion {
+#searchedSuggestion {
   color: black;
 }
 .m5 {
@@ -163,6 +164,9 @@ button:hover {
   font-size: 13px;
   float: right;
   color: rgb(74, 74, 74);
+}
+.hidden {
+  opacity: 0;
 }
 
 @keyframes float {

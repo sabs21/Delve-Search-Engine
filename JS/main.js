@@ -1,10 +1,3 @@
-class Node {
-  constructor(data) {
-    this.data = data;
-    this.children = [];
-  }
-}
-
 window.addEventListener("DOMContentLoaded", function() {
   const url = window.location.href;
   const results = document.getElementById("results");
@@ -28,23 +21,27 @@ window.addEventListener("DOMContentLoaded", function() {
 
   let searchBar = document.getElementById("searchBar");
   let searchButton = document.getElementById("searchButton");
+  let suggestions = document.getElementById("suggestions");
 
   searchButton.addEventListener("click", (e) => {
     console.log(searchBar.value);
+    suggestions.className = "";
 
     if (searchBar.value !== "") {
       search(searchBar.value, "https://www.armorshieldroof.com/")
-      .then(res => {
-        console.log(res);
+      .then(data => {
+        console.log(data);
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
+        displayLastSearch(data.phrase);
+        populateSuggestions(data.suggestions, data.url);
 
-        if (res.results?.length > 0) {
+        if (data.results?.length > 0) {
           // Populate the results container with results.
-          populate(res, results);
-          pageBar.appendChild(createPageButtons(res));
-          setCurrentPage(res.page);
-          setTotalPages(res.totalPages);
+          populate(data, results);
+          pageBar.appendChild(createPageButtons(data));
+          setCurrentPage(data.page);
+          setTotalPages(data.totalPages);
         }
         else {
           setCurrentPage(0);
@@ -58,21 +55,29 @@ window.addEventListener("DOMContentLoaded", function() {
   });
 });
 
+const displayLastSearch = (searchPhrase) => {
+  const searchedSuggestion = document.getElementById("searchedSuggestion");
+  searchedSuggestion.innerHTML = searchPhrase;
+}
+
 // Input: Data from backend
 // Output: Array of suggestions (Strings)
-const getSuggestions = (data) => {
-  let totalTerms = data.terms.length;
-  let terms = data.terms;
-  let suggestions = [];
-  data.keywords.forEach(keyword => {
-    //if 
+const populateSuggestions = (suggestions, url) => {
+  const otherSuggestions = document.getElementById("otherSuggestions");
+  otherSuggestions.innerHTML = "";
+  suggestions.forEach(suggestion => {
+    let badge = createSuggestionBadge(suggestion, url);
+    otherSuggestions.append(badge);
   });
 }
 
-const createSuggestionBadge = (suggestion) => {
+const createSuggestionBadge = (suggestion, url) => {
   let badge = document.createElement("span"); 
   badge.className = "badge suggestion m5";
   badge.innerText = suggestion;
+  badge.addEventListener("click", (e) => {
+    search(suggestion, url)
+  });
   return badge;
 }
 
