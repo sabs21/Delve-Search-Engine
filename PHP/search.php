@@ -562,8 +562,7 @@ try {
     $statement->execute([$site_id]);
     $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
 
-    // Fill the phraseHits array with the indices of any search phrase matches within the content of each page.
-    //$phraseHits = [];
+    // Generate snippets for any results whose content contains the search phrase.
     foreach ($results as $result) {
         // Case-insensitive search for the needle (phrase) in the haystack (content)
         $phraseMatchIndex = stripos($result['paragraph'], $phrase);
@@ -581,12 +580,23 @@ try {
                 $snippetStart = 0;
             }
             if ($clipsAtEnd) {
-                $snippetLength = strlen($result['paragraph']) - $snippetStart;
+                $snippetLength = $paragraph_length - $snippetStart;
             }
-            $snippet = substr($result['paragraph'], $snippetStart, $snippetLength); // Get 140 characters after the phrase.
-            //$phraseHits[] = "snippetStart: " . $snippetStart;
-            //$phraseHits[] = "snippetLength: " . $snippetLength;
-            //$phraseHits[] = "snippet: " . $snippet;
+            // Ensures whole word is captured on the beginning edge.
+            $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
+            while ($snippetStart > 0 && !$is_space_char) {
+                $snippetStart--;
+                $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
+            }
+            // Ensures whole word is captured on the ending edge.
+            $snippetEnd = $snippetStart + $snippetLength;
+            $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
+            while ($snippetEnd < $paragraph_length && !$is_space_char) {
+                $snippetLength++;
+                $snippetEnd++;
+                $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
+            }
+            $snippet = substr($result['paragraph'], $snippetStart, $snippetLength + 2); // For some reason adding 2 to snippetLength guarentees the ending word is fully captured. Get around 140 characters after the phrase.
 
             // Remove line breaks from snippet.
             $brRegex = "/<br>/";
