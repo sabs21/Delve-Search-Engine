@@ -575,51 +575,70 @@ try {
             $clipsAtStart = $phraseMatchIndex < $charsFromPhrase; // Check if we can get 140 characters before the phrase without going below zero.
             $clipsAtEnd = $phraseMatchIndex + $charsFromPhrase > $paragraph_length; // Check if we can get 140 characters after the phrase without going past the snippet length.
             $snippetStart = $phraseMatchIndex - $charsFromPhrase; // Starting index of the snippet
-            $snippetLength = $charsFromPhrase * 2; // Length of the snippet.
+            $idealLength = $charsFromPhrase * 2; // The ideal length of the snippet.
             if ($clipsAtStart) {
                 $snippetStart = 0;
             }
             if ($clipsAtEnd) {
-                $snippetLength = $paragraph_length - $snippetStart;
+                $idealLength = $paragraph_length - $snippetStart;
             }
             // Ensures whole word is captured on the beginning edge.
             $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
-            while ($snippetStart > 0 && !$is_space_char) {
-                $snippetStart--;
+            while ($snippetStart > 0) {
+                if (!$is_space_char) {
+                    $snippetStart--;
+                }
+                else {
+                    $snippetStart++; // This removes the space from the start of the snippet.
+                    break;
+                }
                 $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
             }
+            
             // Ensures whole word is captured on the ending edge.
-            $snippetEnd = $snippetStart + $snippetLength;
+            $snippetEnd = $snippetStart + $idealLength;
             $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
-            while ($snippetEnd < $paragraph_length && !$is_space_char) {
-                $snippetLength++;
+            while ($snippetEnd < ($paragraph_length - 1) && !$is_space_char) {
+                $idealLength++;
                 $snippetEnd++;
                 $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
             }
-            $snippet = substr($result['paragraph'], $snippetStart, $snippetLength + 2); // For some reason adding 2 to snippetLength guarentees the ending word is fully captured. Get around 140 characters after the phrase.
-
+            $snippet = substr($result['paragraph'], $snippetStart, $idealLength); // Get around 140 characters before and after the phrase.
             // Remove line breaks from snippet.
-            $brRegex = "/<br>/";
-            while (preg_match_all($brRegex, $snippet) > 0) {
+            $br_regex = "/<br>/";
+            while (preg_match_all($br_regex, $snippet) > 0) {
                 // Find the index of the line break
                 $match = [];
-                preg_match($brRegex, $snippet, $match, PREG_OFFSET_CAPTURE);
-                $matchIndex = $match[0][1];
+                preg_match($br_regex, $snippet, $match, PREG_OFFSET_CAPTURE);
+                $break_index = $match[0][1];
 
                 // Check whether the line break is to the left or right of the phrase. This info is useful for substringing the snippet properly.
                 $phraseIndex = stripos($snippet, $phrase);
-                if ($matchIndex < $phraseIndex) {
+                if ($break_index < $phraseIndex) {
                     // <br> is on the left of the phrase. __ signifies the ideal cutoff in the example below.
                     // sample text.<br>__New line of text containing phrase...
-                    $matchIndex = $matchIndex + 4;
-                    $snippet = substr($snippet, $matchIndex, strlen($snippet) - $matchIndex);
+                    $break_index = $break_index + 4;
+                    $snippet = substr($snippet, $break_index, strlen($snippet) - $break_index);
                 }
                 else {
                     // <br> is on the right of the phrase. __ signifies the ideal cutoff in the example below.
                     // sample text containing phrase.__<br>New line of text...
-                    $snippet = substr($snippet, 0, $matchIndex);
+                    $snippet = substr($snippet, 0, $break_index);
                 }
             }
+            // Check if first word is capitalized. If not, add ellipses.
+            $capitalized_regex = "/[A-Z]/";
+            $is_capitalized = preg_match($capitalized_regex, $snippet[0]);
+            if (!$is_capitalized) {
+                $snippet = "... " . $snippet;
+            }
+            // Check if the last word ends with punctuation. If not, add ellipses.
+            $punctuation_regex = "/[.!?]/";
+            $is_stopped = preg_match($punctuation_regex, $snippet[strlen($snippet) - 1]);
+            if (!$is_stopped) {
+                $snippet = $snippet . "...";
+            }
+
             $search_results[$result['page_id']]->add_snippet($snippet, true);
         }
     }

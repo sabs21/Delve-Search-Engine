@@ -144,7 +144,7 @@ const boldSearchTerms = (str, terms) => {
       let termEnd = termStart + term.keyword.length; // Index.
       let firstHalf = bolded.substring(0, termStart); // Each half excludes the matched string.
       //console.log("firstHalf", firstHalf);
-      let secondHalf = bolded.substring(termEnd, bolded.length - 1);
+      let secondHalf = bolded.substring(termEnd, bolded.length);
       //console.log("secondHalf", secondHalf);
       let termFromStr = bolded.substring(termStart, termEnd); // Getting the term like this preserves its uppercase and lowercase letters from the original string.
       //console.log("termFromStr", termFromStr);
@@ -217,15 +217,15 @@ const populate = (res, container) => {
 
     // Concatenate all formatted snippets into one.
     let completeSnippet = '';
-    if (result.snippets[0]?.fromPageContent) {
+    /*if (result.snippets[0]?.fromPageContent) {
       // If the first part of the snippet is in the middle of the page's content, add ellipses at the beginning of the snippet.
       completeSnippet = '... ';
-    }
+    }*/
     formattedSnippets.forEach(snippet => {
       // Ensure that the snippet doesn't get too long (longer than 350 chars).
       let newLength = completeSnippet.length + snippet.text.length;
       if (newLength < 350) {
-        completeSnippet += snippet.text + '... ';
+        completeSnippet += snippet.text;
       }
     })
     /*if (completeSnippet !== '') {

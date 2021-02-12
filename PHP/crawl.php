@@ -779,7 +779,7 @@ function get_all_headers($element) {
                 if ($paragraph !== '' && strlen($paragraph) > 100) {
                   // We now know this is a valid paragraph.
                   // Add in where new lines should be, then set the paragraph.
-                  $newLineRegex = "/[^ \.][.!?][^ \.]/";
+                  $newLineRegex = "/[^ \.][.!?][^ )\.]/";
                   $matches = [];
                   preg_match_all($newLineRegex, $paragraph, $matches, PREG_OFFSET_CAPTURE); // PREG_OFFET_CAPTURE allows me to get the indices of each match.
                   $matches = $matches[0]; // Bypass an unnecessary layer of the array.
