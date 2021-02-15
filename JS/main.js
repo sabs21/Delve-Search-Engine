@@ -1,5 +1,5 @@
 window.addEventListener("DOMContentLoaded", function() {
-  const url = window.location.href;
+  const url = "https://www.armorshieldroof.com/"; //window.location.href;
   const results = document.getElementById("results");
   const pageBar = document.getElementById("pageBar");
 
@@ -21,14 +21,14 @@ window.addEventListener("DOMContentLoaded", function() {
 
   let searchBar = document.getElementById("searchBar");
   let searchButton = document.getElementById("searchButton");
-  let suggestions = document.getElementById("suggestions");
+  let postSearchSuggestions = document.getElementById("suggestions"); // Suggestions that are shown after a search.
 
   searchButton.addEventListener("click", (e) => {
     console.log(searchBar.value);
-    suggestions.className = "";
+    postSearchSuggestions.className = "";
 
     if (searchBar.value !== "") {
-      search(searchBar.value, "https://www.armorshieldroof.com/")
+      search(searchBar.value, url)
       .then(data => {
         console.log(data);
         results.innerHTML = ""; // Clear out the old results to make room for the new.
@@ -53,6 +53,35 @@ window.addEventListener("DOMContentLoaded", function() {
       });
     }
   });
+
+  // let preSearchSuggestions = document.getElementById("preSearchSuggestions"); // Suggestions that appear before a search in the dropdown.
+
+  searchBar.addEventListener("keyup", (e) => {
+    console.log(e);
+    const searchDropdown = document.getElementById("searchDropdown");
+    get_suggestions(searchBar.value, url, limit = 10)
+    .then(data => {
+      console.log(data);
+      populateDropdown(data.suggestions, data.url);
+      if (data.suggestions.length > 0) {
+        searchDropdown.classList.add("hasSuggestions");
+      }
+      else {
+        searchDropdown.classList.remove("hasSuggestions");
+      }
+    })
+    .catch(err => {
+      console.log("ERROR: ", err);
+    });
+  });
+
+  // Show/hide the dropdown when the searchbar is focused/unfocused
+  searchBar.addEventListener("focus", (e) => {
+    searchDropdown.classList.add("isFocused");
+  });
+  searchBar.addEventListener("blur", (e) => {
+    searchDropdown.classList.remove("isFocused");
+  });
 });
 
 const displayLastSearch = (searchPhrase) => {
@@ -72,11 +101,39 @@ const populateSuggestions = (suggestions, url) => {
 }
 
 const createSuggestionBadge = (suggestion, url) => {
+  const results = document.getElementById("results");
+  const pageBar = document.getElementById("pageBar");
+  const searchBar = document.getElementById("searchBar");
   let badge = document.createElement("span"); 
   badge.className = "badge suggestion m5";
   badge.innerText = suggestion;
+  // When the badge gets clicked, perform a search using the suggestion.
   badge.addEventListener("click", (e) => {
+    console.log(e);
+    searchBar.value = suggestion;
     search(suggestion, url)
+    .then(data => {
+      console.log(data);
+      results.innerHTML = ""; // Clear out the old results to make room for the new.
+      pageBar.innerHTML = "";
+      displayLastSearch(data.phrase);
+      populateSuggestions(data.suggestions, data.url);
+
+      if (data.results?.length > 0) {
+        // Populate the results container with results.
+        populate(data, results);
+        pageBar.appendChild(createPageButtons(data));
+        setCurrentPage(data.page);
+        setTotalPages(data.totalPages);
+      }
+      else {
+        setCurrentPage(0);
+        setTotalPages(0);
+      }
+    })
+    .catch(err => {
+      console.log("ERROR: ", err);
+    });
   });
   return badge;
 }
@@ -202,7 +259,6 @@ const createPageButtons = (searchData) => {
 // Output: None.
 // Populate the results container with results.
 const populate = (res, container) => {
-  
   res.results.forEach(result => {
     // Format each snippet.
     let formattedSnippets = [];
@@ -259,6 +315,49 @@ const setTotalPages = (totalPages) => {
   totalPagesElem.innerHTML = totalPages;
 }
 
+// Input: (Array) Suggestions array retrieved from suggestions.php
+// Output: None.
+// Populate the suggestions dropdown with suggestions from the backend.
+const populateDropdown = (suggestions, url) => {
+  const searchBar = document.getElementById("searchBar");
+  const suggestionsElem = document.getElementById("suggestions");
+  const list = document.getElementById("preSearchSuggestions");
+  list.innerHTML = ""; // Clear old suggestions.
+
+  suggestions.forEach(suggestion => {
+    let item = document.createElement("li");
+    item.innerText = suggestion;
+    item.addEventListener("click", (e) => {
+      searchBar.value = suggestion;
+      search(suggestion, url)
+      .then(data => {
+        console.log(data);
+        suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
+        results.innerHTML = ""; // Clear out the old results to make room for the new.
+        pageBar.innerHTML = "";
+        displayLastSearch(data.phrase);
+        populateSuggestions(data.suggestions, data.url);
+
+        if (data.results?.length > 0) {
+          // Populate the results container with results.
+          populate(data, results);
+          pageBar.appendChild(createPageButtons(data));
+          setCurrentPage(data.page);
+          setTotalPages(data.totalPages);
+        }
+        else {
+          setCurrentPage(0);
+          setTotalPages(0);
+        }
+      })
+      .catch(err => {
+        console.log("ERROR: ", err);
+      });
+    })
+    list.append(item);
+  });
+}
+
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
 //        data = { sitemap: "https://www.superiorcleaning.solutions/sitemap.xml" }
@@ -311,6 +410,36 @@ async function search(phrase, baseUrl, page = 1) {
       url: baseUrl,
       phrase: phrase,
       page: page
+    }) // body data type must match "Content-Type" header
+  });
+  //console.log(response.text());
+  //return response.text();
+  return response.json();
+}
+
+// Input: (String) Phrase is the search phrase that the user has typed.
+//        (String) baseUrl identifies which site to get suggestions for.
+//        (Integer) limit tells the server the maximum amount of suggestions to return.
+// Output: Response in json format.
+// Search the database for all pages related to your search phrase.
+async function get_suggestions(phrase, baseUrl, limit = 10) {
+  let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php";
+  // Default options are marked with *
+  const response = await fetch(phpUrl, {
+    method: 'POST', // *GET, POST, PUT, DELETE, etc.
+    mode: 'cors', // no-cors, *cors, same-origin
+    cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+    credentials: 'same-origin', // include, *same-origin, omit
+    headers: {
+      'Content-Type': 'application/json'
+      // 'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    redirect: 'follow', // manual, *follow, error
+    referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+    body: JSON.stringify({
+      url: baseUrl,
+      phrase: phrase,
+      limit: limit
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());

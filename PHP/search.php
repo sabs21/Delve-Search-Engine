@@ -291,9 +291,9 @@ class LocalDictionary {
 
 // Get data from the POST sent from the fetch API
 $raw = trim(file_get_contents('php://input'));
-$url = json_decode($raw)->url;
-$urlNoPath = $url;
-$phrase = trim(json_decode($raw)->phrase); // This phrase will get replaced after spellchecking is complete.
+$url = format_url(json_decode($raw)->url);
+//$urlNoPath = $url;
+$phrase = trim(json_decode($raw)->phrase); // User's input into the search bar. This phrase will get replaced after spellchecking is complete.
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
 $site_id = NULL;
 
@@ -306,13 +306,13 @@ foreach ($terms as $index => $term) {
 }
 
 // Format the url which was recieved so that it does not end in '/'
-if ($url[strlen($url) - 1] === '/') {
+/*if ($url[strlen($url) - 1] === '/') {
     $urlNoPath = substr($url, 0, strlen($url) - 1);
     //$url .= '/';
 }
 else {
     $url .= '/'; 
-}
+}*/
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -340,10 +340,11 @@ $response = [
 ///////////////////////////////
 
 // Get credentials for database
-$rawCreds = file_get_contents("../credentials.json");
-$creds = json_decode($rawCreds);
+$raw_credentials = file_get_contents("../credentials.json");
+$credentials = json_decode($raw_credentials);
+$pdo = create_pdo($credentials);
 
-$username = $creds->username;
+/*$username = $creds->username;
 $password = $creds->password;
 $serverIp = $creds->server_ip;
 $dbname = $creds->database_name;
@@ -359,7 +360,7 @@ catch (PDOException $e) {
 } 
 catch(Exception $e) {
     $response['pdo_error'] = $e->getMessage();
-}
+}*/
 
 /////////////////////////////
 // DATABASE COMMUNICATION //
@@ -668,7 +669,7 @@ try {
             // If no snippet was made already, just use the page description as the snippet.
             $search_results[$page_id]->add_snippet($results[$i]['description'], false);
         }
-
+        $urlNoPath = format_url($url, false);
         $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);
         $search_results[$page_id]->set_title($results[$i]['title']);
         $search_results[$page_id]->set_relevance($score_keeper->get_score($page_id));
@@ -807,4 +808,54 @@ function keyword_distance_cmp($a, $b) {
         return 0;
     }
     return ($a_dist < $b_dist) ? -1 : 1;
+}
+
+// Input: URL received from the frontend.
+//        (optional) Boolean that determines whether to end the url with a '/'
+// Output: URL with or without a path.
+// Ensures a given URL has (or doesnt have) a path.
+function format_url($raw_url, $include_path = true) {
+    $urlNoPath = $raw_url;
+    $url = $raw_url;
+    // Format the url which was recieved so that it does not end in '/'
+    if ($url[strlen($url) - 1] === '/') {
+        $urlNoPath = substr($url, 0, strlen($url) - 1);
+        //$url .= '/';
+    }
+    else {
+        $url .= '/'; 
+    }
+
+    if ($include_path) {
+        return $url;
+    }
+    else {
+        return $urlNoPath;
+    }
+}
+
+// Input: Database credentials in object format.
+// Output: PDO object or error message.
+// Create a PDO object that's registered with the database.
+function create_pdo($credentials) {
+    $username = $credentials->username;
+    $password = $credentials->password;
+    $serverIp = $credentials->server_ip;
+    $dbname = $credentials->database_name;
+    $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
+
+    // Create a new PDO instance
+    try {
+        $pdo = new PDO($dsn, $username, $password);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
+        return $pdo;
+    } 
+    catch (PDOException $e) {
+        $error = 'Connection failed: ' . $e->getMessage();
+        return $error;
+    } 
+    catch(Exception $e) {
+        $error = $e->getMessage();
+        return $error;
+    }
 }

@@ -12,13 +12,21 @@
     <div class="cardContainer">
       <div class="card">
         <label class="inputLabel" for="urlInput">Crawl</label>
-        <input id='urlInput' class='searchInput' />
-        <button id='newSite' class='searchSubmit'>New Site</button>
+        <span class="inputContainer">
+          <input id='urlInput' class='textInput' />
+        </span>
+        <button id='newSite' class='submit'>New Site</button>
+        
       </div>
       <div class="card">
         <label class="inputLabel" for="searchBar">Search</label>
-        <input id='searchBar' class='searchInput' />
-        <button id='searchButton' class='searchSubmit'>Search</button>
+        <span class="inputContainer">
+          <input id='searchBar' class='textInput' />
+          <div id="searchDropdown" class="dropdown">
+            <ul id="preSearchSuggestions"></ul>
+          </div>
+        </span>
+        <button id='searchButton' class='submit'>Search</button>
       </div> 
       <div class="break"></div>
       <div class="card" style="margin-bottom: 50px;">
