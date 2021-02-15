@@ -219,7 +219,7 @@ class LocalDictionary {
         catch (Exception $e) {
             // Our database queries has failed.
             // Print out the error message.
-            //$response['db_error'] = $e->getMessage();
+            //$response['dbError'] = $e->getMessage();
             return false;
         }
     }
@@ -317,22 +317,17 @@ else {
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
 $response = [
-    'db_error' => NULL,
-    'hasMisspelling' => false,
+    'dbError' => NULL,
     'keywords' => NULL,
-    'matched' => NULL,
     'page' => $page_to_return + 1,
-    'pdo_error' => NULL,
-    'relevance_scores' => NULL,
-    'results' => NULL,
-    'site_exists' => false,
+    'pdoError' => NULL,
     'phrase' => NULL,
+    'results' => NULL,
     'terms' => NULL,
-    'time_taken' => NULL,
-    'totalResults' => NULL,
+    'timeTaken' => NULL,
     'totalPages' => NULL,
-    'url' => $url,
-    'useful_keywords' => NULL,
+    'totalResults' => NULL,
+    'url' => $url
 ];
 
 /////////////////////////////////
@@ -356,10 +351,10 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
 } 
 catch (PDOException $e) {
-    $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
+    $response['pdoError'] = 'Connection failed: ' . $e->getMessage();
 } 
 catch(Exception $e) {
-    $response['pdo_error'] = $e->getMessage();
+    $response['pdoError'] = $e->getMessage();
 }*/
 
 /////////////////////////////
@@ -369,6 +364,11 @@ catch(Exception $e) {
 try {
     if (!isset($pdo)) {
         throw new Exception("PDO instance is not defined.");
+    }
+    if (is_string($pdo)) {
+        // Return PDO error
+        $response['pdoError'] = $pdo;
+        throw new Exception("PDO error.");
     }
 
     // Grab relevant site_id from recent call
@@ -380,7 +380,7 @@ try {
     // Check existence of site in database
     if ($sql_res) {
         $site_id = $sql_res['site_id'];
-        $response['site_exists'] = true;
+        //$response['siteExists'] = true;
     }
     else {
         throw new Exception("Site not found in database.");
@@ -398,7 +398,7 @@ try {
 
         if (!$is_english) {
             // Indicate that this phrase contains a misspelling
-            $response['hasMisspelling'] = true;
+            //$response['hasMisspelling'] = true;
             $original_keyword->has_misspelling(true);
 
             // Merge these new suggestions with all previous ones.
@@ -678,7 +678,7 @@ try {
     // Sort the pages by their relevance score
     usort($search_results, 'resultSort');
 
-    $response['relevance_scores'] = $score_keeper->get_all_scores();
+    //$response['relevance_scores'] = $score_keeper->get_all_scores();
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
@@ -687,7 +687,7 @@ try {
 catch (Exception $e) {
     // One of our database queries have failed.
     // Print out the error message.
-    $response['db_error'] = $e->getMessage();
+    $response['dbError'] = $e->getMessage();
 }
 
 // Store the search that was made by the user
@@ -705,7 +705,7 @@ if ($page_to_return === 0) { // Only store searches that land on the first page.
         // One of our database queries have failed.
         // Print out the error message.
         //echo $e->getMessage();
-        $response['db_error'] = $e->getMessage();
+        $response['dbError'] = $e->getMessage();
         // Rollback the transaction.
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
@@ -715,7 +715,7 @@ if ($page_to_return === 0) { // Only store searches that land on the first page.
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
-$response['time_taken'] = $end - $begin;
+$response['timeTaken'] = $end - $begin;
 
 // Send a response back to the client.
 echo json_encode($response);
