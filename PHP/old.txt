@@ -1,0 +1,92 @@
+class Keyword {
+    public $original; // Original term that this keyword references.
+    //protected $pages_found;
+    public $keyword;
+    public $term_index; // Index of the term which this keyword references.
+    public $has_misspelling; // Flag for whether the original keyword is misspelled.
+    public $has_suggestion;
+    public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
+    protected $max; // Maximum dupe_totals of this keyword in the database.
+
+    public function __construct($original, $term_index, $suggested = NULL) {
+        $this->original = $original;
+        $this->term_index = $term_index;
+        $this->max = NULL;
+        //$this->pages_found = [];
+        if (isset($suggested)) {
+            $this->keyword = $suggested;
+            $this->has_suggestion = true;
+            $this->has_misspelling = true;
+            $this->suggestion_distance = levenshtein($original, $suggested);
+        }
+        else {
+            $this->keyword = $original;
+            $this->has_suggestion = false;
+            $this->has_misspelling = false;
+            $this->suggestion_distance = 0;
+        }
+    }
+
+    public function get_term_index() {
+        return $this->term_index;
+    }
+
+    public function get_suggestion_distance() {
+        return $this->suggestion_distance;
+    }
+
+    public function get_original() {
+        return $this->original;
+    }
+
+    public function get_keyword() {
+        return $this->keyword;
+    }
+
+    public function set_keyword($new_keyword) {
+        if ($new_keyword !== $this->original) {
+            $this->keyword = $new_keyword;
+            $this->has_suggestion = true;
+            $this->suggestion_distance = levenshtein($this->original, $new_keyword);
+        }
+        else {
+            $this->keyword = $this->original;
+            $this->has_suggestion = false;
+            $this->suggestion_distance = 0;
+        }
+    }
+
+    public function has_suggestion($bool = null) {
+        if ($bool !== null) {
+            $this->has_suggestion = $bool;
+        }
+        return $this->has_suggestion;
+    }
+
+    // This refers to $original, not $keyword
+    public function has_misspelling($bool = null) {
+        if ($bool !== null) {
+            $this->has_misspelling = $bool;
+        }
+        return $this->has_misspelling;
+    }
+
+    public function get_max() {
+        return $this->max;
+    }
+
+    public function set_max($new_max) {
+        $this->max = $new_max;
+    }
+
+    // If the max is set, output a relevance score.
+    // If the max is not set, output 0;
+    public function relevance($dupe_total) {
+        if (isset($this->max)) {
+            return ceil(($dupe_total / $this->max) * 100);
+        }
+        else {
+            return 0;
+        }
+    }
+}

@@ -46,90 +46,163 @@ class ScoreKeeper {
     }
 }
 
-class Keyword {
-    public $original; // Original term that this keyword references.
-    //protected $pages_found;
-    public $keyword;
-    public $term_index; // Index of the term which this keyword references.
-    public $has_misspelling; // Flag for whether the original keyword is misspelled.
-    public $has_suggestion;
-    public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
-    protected $max; // Maximum dupe_totals of this keyword in the database.
-
-    public function __construct($original, $term_index, $suggested = NULL) {
+// A Suggestion is an alternate Phrase
+class Suggestion {
+    public $original; // Phrase Object
+    public $suggestion; // Phrase Object
+    public $distance; // Total distance between the two Phrase objects.
+    
+    public function __construct(Phrase $original, Phrase $suggestion) {
         $this->original = $original;
-        $this->term_index = $term_index;
-        $this->max = NULL;
-        //$this->pages_found = [];
-        if (isset($suggested)) {
-            $this->keyword = $suggested;
-            $this->has_suggestion = true;
-            $this->has_misspelling = true;
-            $this->suggestion_distance = levenshtein($original, $suggested);
+        $this->suggestion = $suggestion;
+
+        // Calculate the total distance between the two Phrases.
+        $total = 0;
+        for ($i = 0; $i < $original->length(); $i++) {
+            $total += levenshtein($original->get_keyword($i)->get_text(), $suggestion->get_keyword($i)->get_text());
         }
-        else {
-            $this->keyword = $original;
-            $this->has_suggestion = false;
-            $this->has_misspelling = false;
-            $this->suggestion_distance = 0;
-        }
+        $this->distance = $total;
     }
 
-    public function get_term_index() {
-        return $this->term_index;
+    public function get_original_phrase() {
+        return $this->original;
+        //$phrase = "";
+        //foreach ($this->keywords as $keyword) {
+        //    $phrase .= $keyword . " ";
+        //}
+        //return substr($phrase, 0, -1); // Remove the space at the end.*/
+    }
+    public function get_suggested_phrase() {
+        return $this->suggestion;
+    }
+    public function set_suggested_phrase(Phrase $suggestion) {
+        $this->suggestion = $suggestion;
+    }
+    public function get_total_distance() {
+        return $this->distance;
+    }
+}
+
+class Phrase {
+    public $keywords; // Array of Keyword objects
+    
+    public function __construct(array $keywords) {
+        $this->keywords = $keywords;
     }
 
-    public function get_suggestion_distance() {
-        return $this->suggestion_distance;
+    public function to_string() {
+        $phrase = "";
+        foreach ($this->keywords as $keyword) {
+            $phrase .= $keyword . " ";
+        }
+        return substr($phrase, 0, -1); // Remove the space at the end.
+    }
+    public function set_phrase(array $keywords) {
+        $this->keywords = $keywords;
+    }
+
+    public function get_keyword(int $index) {
+        return $this->keywords[$index];
+    }
+    public function get_all_keywords() {
+        return $this->keywords;
+    }
+    public function set_keyword($keyword, $index) {
+        $this->keywords[$index] = $keyword;
+    }
+
+    public function length() {
+        return count($this->keywords);
+    }
+
+    public function has_misspelling() {
+        foreach ($this->keywords as $keyword) {
+            if ($keyword->is_misspelled()) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+// A Prediction is an alternate to Keyword
+class Prediction {
+    public $original; // Keyword object
+    public $prediction; // Keyword object
+    public $distance;
+    public $index;
+
+    public function __construct(Keyword $original, Keyword $prediction) {
+        $this->original = $original; // Keyword object
+        $this->prediction = $prediction;
+        $this->index = $original->get_index();
+        $this->distance = levenshtein($original->get_text(), $prediction->get_text());
     }
 
     public function get_original() {
         return $this->original;
     }
 
-    public function get_keyword() {
+    public function get_prediction() {
+        return $this->prediction;
+    }
+
+    public function get_index() {
+        return $this->index;
+    }
+
+    public function get_distance() {
+        return $this->distance;
+    }
+}
+
+class Keyword {
+    //public $original; // Original term that this keyword references.
+    //protected $pages_found;
+    public $keyword;
+    public $index; // Index of the term which this keyword references.
+    public $is_misspelled; // Flag for whether the original keyword is misspelled.
+    //public $has_suggestion;
+    //public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
+    protected $max; // Maximum dupe_totals of this keyword in the database.
+
+    public function __construct(string $keyword, int $index) {
+        $this->keyword = $keyword;
+        $this->index = $index;
+        $this->max = NULL;
+        $this->is_misspelled = false;
+    }
+
+    public function get_index() {
+        return $this->index;
+    }
+
+    public function get_text() {
         return $this->keyword;
     }
 
-    public function set_keyword($new_keyword) {
-        if ($new_keyword !== $this->original) {
-            $this->keyword = $new_keyword;
-            $this->has_suggestion = true;
-            $this->suggestion_distance = levenshtein($this->original, $new_keyword);
-        }
-        else {
-            $this->keyword = $this->original;
-            $this->has_suggestion = false;
-            $this->suggestion_distance = 0;
-        }
+    public function set_text(string $new_keyword) {
+        $this->keyword = $new_keyword;
     }
 
-    public function has_suggestion($bool = null) {
+    public function is_misspelled(bool $bool = null) {
         if ($bool !== null) {
-            $this->has_suggestion = $bool;
+            $this->is_misspelled = $bool;
         }
-        return $this->has_suggestion;
-    }
-
-    // This refers to $original, not $keyword
-    public function has_misspelling($bool = null) {
-        if ($bool !== null) {
-            $this->has_misspelling = $bool;
-        }
-        return $this->has_misspelling;
+        return $this->is_misspelled;
     }
 
     public function get_max() {
         return $this->max;
     }
 
-    public function set_max($new_max) {
+    public function set_max(int $new_max) {
         $this->max = $new_max;
     }
 
     // If the max is set, output a relevance score.
     // If the max is not set, output 0;
-    public function relevance($dupe_total) {
+    public function relevance(int $dupe_total) {
         if (isset($this->max)) {
             return ceil(($dupe_total / $this->max) * 100);
         }
@@ -147,7 +220,7 @@ class Result {
     //public $dupeTotals; // An array which holds every dupe_total for this given page
     public $relevance;
 
-    public function __construct($page_id, $url = NULL, $title = NULL, $relevance = 0) {
+    public function __construct(int $page_id, string $url = NULL, string $title = NULL, int $relevance = 0) {
         $this->page_id = $page_id;
         $this->url = $url;
         $this->title = $title;
@@ -170,7 +243,7 @@ class Result {
     public function get_title() {
         return $this->title;
     }
-    public function set_title($str) {
+    public function set_title(string $str) {
         $this->title = $str;
     }
 
@@ -182,38 +255,63 @@ class Result {
     }
     // $str (String)
     // $from_page_content (Boolean)
-    public function add_snippet($str, $from_page_content) {
-        $this->snippets[] = ["text" => $str, "fromPageContent" => $from_page_content];
+    public function add_snippet(string $text, bool $from_page_content) {
+        $this->snippets[] = ["text" => $text, "fromPageContent" => $from_page_content];
     }
 
     public function get_relevance() {
         return $this->relevance;
     }
-    public function set_relevance($value) {
+    public function set_relevance(int $value) {
         $this->relevance = $value;
     }
 }
 
 // This dictionary is created from the website's keywords.
-// The purpose of this over a traditional dictionary is better suggestions.
-class LocalDictionary {
-    public $dict;
-    public $section; // Letter which all words begin with.
+// The dictionary consists of sections seperated by each keyword's beginning letter.
+// This allows for the Dictionary to retain the Section objects that are created.
+class Dictionary {
+    public $dictionary; // Array of Section objects.
+    //public $section; // Letter which all words begin with.
 
-    public function __construct() {
-        //$json = file_get_contents($path);
-        $this->dict = null;//json_decode($json, TRUE);
-        $this->section = null;
+    public function __construct($dictionary = []) {
+        $this->dictionary = $dictionary;
     }
 
     // All dictionaries must be created before they are retrieved.
-    public function create_dictionary($pdo, $site_id, $first_letter) {
+    public function add_section(Section $section) {
+        $first_letter = $section->get_letter();
+        $this->dictionary[$first_letter] = $section;
+    }
+
+    public function get_section($first_letter) {
+        return $this->dictionary[$first_letter];
+    }
+
+    public function has_section($first_letter) {
+        return isset($this->dictionary[$first_letter]);
+    }
+}
+
+// This Section (of a Dictionary) is a collection of the website's keywords.
+// The purpose of this over a traditional dictionary is better suggestions.
+class Section {
+    public $section;
+    public $letter; // Letter which all words begin with.
+
+    public function __construct() {
+        $this->section = null;
+        $this->letter = null;
+    }
+
+    // All dictionaries must be created before they are retrieved.
+    public function create_section($pdo, $site_id, $letter) {
         try {
-            $sql = 'SELECT DISTINCT keyword FROM keywords_' . $first_letter . ' WHERE site_id = ? ORDER BY keyword ASC;';
+            $this->letter = $letter;
+            $sql = 'SELECT DISTINCT keyword FROM keywords_' . $letter . ' WHERE site_id = ? ORDER BY keyword ASC;';
             $statement = $pdo->prepare($sql);
             $statement->execute([$site_id]);
-            $this->dict = $statement->fetchAll();
-            $this->section = $first_letter;
+            $this->section = $statement->fetchAll();
             return true;
         } 
         catch (Exception $e) {
@@ -224,23 +322,23 @@ class LocalDictionary {
         }
     }
 
-    public function get_dictionary() {
-        return $this->dict;
+    public function get_letter() {
+        return $this->letter;
     }
 
     public function word_at($index) {
-        return $this->dict[$index]['keyword'];
+        return $this->section[$index]['keyword'];
     }
 
     public function length() {
-        return count($this->dict);
+        return count($this->section);
     }
 
     // Input: key is the word we're searching for
     // Output: Array containing a flag stating if an exact match was found, and the index of the match.
     // Perform a binary search for a given term based on a word.
     public function search($key) {
-        //$arr = parent::get_dict();
+        //$arr = parent::get_section();
         $l = 0;
         $h = $this->length();
         $mid = ceil($l + ($h - $l) / 2); 
@@ -272,16 +370,17 @@ class LocalDictionary {
     //        term_index (Integer)
     // Output: Array of Keyword objects
     // Find similar words to the word given.
-    public function similar_to($word, $term_index) {
-        $similar_words = [];
+    public function similar_to(Keyword $keyword) {
+        $predictions = [];
         $max_distance = 2; // Maximum allowed levenshtein distance
-        foreach ($this->get_dictionary() as $entry) {
-            $distance = levenshtein($word, $entry['keyword']);
+        foreach ($this->section as $entry) {
+            $distance = levenshtein($keyword->get_text(), $entry['keyword']);
             if ($distance <= $max_distance) {
-                $similar_words[] = new Keyword($word, $term_index, $entry['keyword']);
+                $good_entry = new Keyword($entry['keyword'], $keyword->get_index());
+                $predictions[] = new Prediction($keyword, $good_entry);
             }
         }
-        return $similar_words;
+        return $predictions;
     }
 }
 
@@ -291,7 +390,7 @@ class LocalDictionary {
 
 // Get data from the POST sent from the fetch API
 $raw = trim(file_get_contents('php://input'));
-$url = format_url(json_decode($raw)->url);
+$url = format_url(json_decode($raw)->url); // Format the url which was recieved so that it does not end in '/'
 //$urlNoPath = $url;
 $phrase = trim(json_decode($raw)->phrase); // User's input into the search bar. This phrase will get replaced after spellchecking is complete.
 $page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
@@ -304,15 +403,7 @@ $original_keywords = [];
 foreach ($terms as $index => $term) {
     $original_keywords[$index] = new Keyword($term, $index);
 }
-
-// Format the url which was recieved so that it does not end in '/'
-/*if ($url[strlen($url) - 1] === '/') {
-    $urlNoPath = substr($url, 0, strlen($url) - 1);
-    //$url .= '/';
-}
-else {
-    $url .= '/'; 
-}*/
+$phrase = new Phrase($original_keywords);
 
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
@@ -338,24 +429,6 @@ $response = [
 $raw_credentials = file_get_contents("../credentials.json");
 $credentials = json_decode($raw_credentials);
 $pdo = create_pdo($credentials);
-
-/*$username = $creds->username;
-$password = $creds->password;
-$serverIp = $creds->server_ip;
-$dbname = $creds->database_name;
-$dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
-
-// Create a new PDO instance
-try {
-    $pdo = new PDO($dsn, $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
-} 
-catch (PDOException $e) {
-    $response['pdoError'] = 'Connection failed: ' . $e->getMessage();
-} 
-catch(Exception $e) {
-    $response['pdoError'] = $e->getMessage();
-}*/
 
 /////////////////////////////
 // DATABASE COMMUNICATION //
@@ -386,15 +459,38 @@ try {
         throw new Exception("Site not found in database.");
     }
 
+    // Create a Dictionary to store all Sections we create into one place
+    $dictionary = new Dictionary();
+
+    // Spell check each Keyword within the Phrase
+    foreach ($phrase->get_all_keywords() as $keyword) {
+        $first_letter = $keyword->get_text()[0];
+        if (!$dictionary->has_section($first_letter)) {
+            // Add a new section to the dictionary
+            $section = new Section();
+            $section->create_section($pdo, $site_id, $first_letter);
+            $dictionary->add_section($section);
+        }
+        spell_check_keyword($keyword, $dictionary);
+    }
+
+    $predictions = phrase_predictions($phrase, $dictionary);
+    $response['predictions'] = $predictions;
+    $suggestions = create_suggestions_from_predictions($phrase, $predictions);
+    usort($suggestions, 'sort_suggestions_by_distance');
+    $response['suggestions'] = $suggestions;
+    $keyword_results = fetch_keyword_results($predictions, $pdo, $site_id);
+    $response['keyword_results'] = $keyword_results;
+
     // Contains both keywords and suggestions which will be searched within the database.
-    $keywords = [];
+    /*$keywords = [];
 
     // Fill the keywords array with all possible keywords
     foreach ($original_keywords as $index => $original_keyword) {
-        $first_letter = $original_keyword->get_keyword()[0];
-        $dict = new LocalDictionary();
-        $dict->create_dictionary($pdo, $site_id, $first_letter);
-        $is_english = $dict->search($original_keyword->get_keyword());
+        $first_letter = $original_keyword->get_text()[0];
+        $dict = new Section();
+        $dict->create($pdo, $site_id, $first_letter);
+        $is_english = $dict->search($original_keyword->get_text());
 
         if (!$is_english) {
             // Indicate that this phrase contains a misspelling
@@ -402,23 +498,23 @@ try {
             $original_keyword->has_misspelling(true);
 
             // Merge these new suggestions with all previous ones.
-            $keywords = array_merge($keywords, $dict->similar_to($original_keyword->get_keyword(), $index));
+            $keywords = array_merge($keywords, $dict->similar_to($original_keyword->get_text(), $index));
         }
         else {
             $keywords[] = $original_keyword;
         }
-    }
+    }*/
 
-    usort($keywords, 'nat_keyword_cmp');
-    $response['possible_keywords'] = $keywords;
+    //usort($keywords, 'nat_cmp');
+    //$response['possible_keywords'] = $keywords;
 
     // Tally each group of keywords with the same first letter
     // Used to generate a big keyword search query
-    $groups = [];
+    /*$groups = [];
     $total = 0; // total refers to the total keywords with the same first letter
-    $first_letter = $keywords[0]->get_keyword()[0];
+    $first_letter = $keywords[0]->get_text()[0];
     foreach ($keywords as $keyword) {
-        $keyword = $keyword->get_keyword();
+        $keyword = $keyword->get_text();
         // Look for any change in first letter since the last iteration.
         // If there has been a change, reset the total counter.
         if ($keyword[0] === $first_letter) {
@@ -445,14 +541,13 @@ try {
     for ($i = 0; $i < count($keywords); $i++) {
         // Since we cannot use PDO to directly execute an array of objects,
         // we use this for loop to solve that issue.
-        $statement->bindValue($i+1, $keywords[$i]->get_keyword(), PDO::PARAM_STR);
+        $statement->bindValue($i+1, $keywords[$i]->get_text(), PDO::PARAM_STR);
     }
     $statement->execute();
     $results = $statement->fetchAll();
 
     $response['mass_query_results'] = $results;
-
-    usort($keywords, 'keyword_distance_cmp');
+    //usort($keywords, 'keyword_distance_cmp');
 
     // Form a new search phrase to replace misspelled terms with best suggestions.
     $phrase = NULL;
@@ -463,13 +558,13 @@ try {
             if ($term_index === $keyword->get_term_index()) {
                 // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
                 //$terms[$term_index] = $keyword;
-                $original_keyword->set_keyword($keyword->get_keyword());
+                $original_keyword->set_keyword($keyword->get_text());
                 //$keyword_found = true;
                 break;
             }
         }
         //if ($keyword_found) {
-        $phrase .= $original_keyword->get_keyword() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
+        $phrase .= $original_keyword->get_text() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
         //}
     }
     $phrase = substr($phrase, 0, -1); // Remove the space at the end.
@@ -485,12 +580,12 @@ try {
             if ($total_fragments > 0) {
                 // Apply this term to every suggestion currently within the fragments array
                 for ($i = 0; $i < $total_fragments; $i++) {
-                    $fragments[] = $fragments[$i] . " " . $original_keyword->get_keyword();
+                    $fragments[] = $fragments[$i] . " " . $original_keyword->get_text();
                 }
             }
             else {
                 // Add the original term input by the user since we did not find a replacement for this term.
-                $fragments[] = $original_keyword->get_keyword();
+                $fragments[] = $original_keyword->get_text();
             }
         }
         else {
@@ -502,16 +597,16 @@ try {
                     if ($total_fragments > 0) {
                         // Apply this term to every suggestion currently within the fragments array
                         for ($i = 0; $i < $total_fragments; $i++) {
-                            $fragments[] = $fragments[$i] . " " . $keyword->get_keyword();
+                            $fragments[] = $fragments[$i] . " " . $keyword->get_text();
                         }
                     }
                     else {
-                        $fragments[] = $keyword->get_keyword();
+                        $fragments[] = $keyword->get_text();
                     }
                 }
             }
             if (!$found_suggestion) {
-                $fragments[] = $original_keyword->get_keyword();
+                $fragments[] = $original_keyword->get_text();
             }
         }
     }
@@ -532,7 +627,7 @@ try {
     foreach ($results as $result) {
         $page_id = $result['page_id'];
         foreach ($original_keywords as $original_keyword) {
-            $keywords_match = $result['keyword'] === $original_keyword->get_keyword();
+            $keywords_match = $result['keyword'] === $original_keyword->get_text();
             $has_max = $original_keyword->get_max() !== null;
             // Storing this max will come in handy when calculating relevance scores.
             if ($keywords_match) {
@@ -682,7 +777,7 @@ try {
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
-    $response['results'] = $result_pages[$page_to_return];
+    $response['results'] = $result_pages[$page_to_return];*/
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
@@ -691,7 +786,7 @@ catch (Exception $e) {
 }
 
 // Store the search that was made by the user
-if ($page_to_return === 0) { // Only store searches that land on the first page.
+/*if ($page_to_return === 0) { // Only store searches that land on the first page.
     try {
         $pdo->beginTransaction();
         $sql = 'INSERT INTO searches (site_id, search_phrase) VALUES (?, ?)';
@@ -711,7 +806,7 @@ if ($page_to_return === 0) { // Only store searches that land on the first page.
             $pdo->rollBack();
         }
     }
-}
+}*/
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
@@ -790,11 +885,28 @@ function resultSort($resA, $resB) {
     return ($a > $b) ? -1 : 1;
 }
 
-// Input: Two Keyword objects
+// Input: Two String objects
 // Output: -1, 0, 1
 // Compares two keywords lexicographically.
-function nat_keyword_cmp($a, $b) {
-    return strnatcasecmp($a->get_keyword(), $b->get_keyword());
+function nat_cmp(string $a, string $b) {
+    return strnatcasecmp($a, $b);
+}
+
+// Input: Two Suggestion objects
+// Output: -1, 0, 1
+// Compares two Suggestions by their total distance.
+function sort_suggestions_by_distance(Suggestion $a, Suggestion $b) {
+    $a_dist = $a->get_total_distance();
+    $b_dist = $b->get_total_distance();
+    if ($a_dist < $b_dist) {
+        return -1;
+    }
+    else if ($a_dist > $b_dist) {
+        return 1;
+    }
+    else {
+        return 0;
+    }
 }
 
 // Input: Two Keyword objects
@@ -858,4 +970,207 @@ function create_pdo($credentials) {
         $error = $e->getMessage();
         return $error;
     }
+}
+
+function spell_check_keyword(Keyword $keyword, Dictionary $dictionary) {
+    $first_letter = $keyword->get_text()[0];
+    $section = null;
+    if ($dictionary->has_section($first_letter)) {
+        $section = $dictionary->get_section($first_letter);
+    }
+    else {
+        throw new Exception("This Dictionary does not have a Section '" . $first_letter ."'.");
+    }
+
+    $is_english = $section->search($keyword->get_text());
+    if (!$is_english) {
+        $keyword->is_misspelled(true);
+    }
+}
+
+function spell_check_phrase(Phrase $phrase, Dictionary $dictionary) {
+    $keywords = $phrase->get_all_keywords();
+    // Fill the keywords array with all possible keywords
+    try {
+        foreach ($keywords as $index => $keyword) {
+            spell_check_keyword($keyword, $dictionary);
+        }
+    }
+    catch (Exception $e) {
+        echo $e->getMessage();
+    }
+}
+
+function keyword_predictions(Keyword $keyword, Dictionary $dictionary) {
+    // Verify that the Dictionary contains the necessary Section. 
+    $first_letter = $keyword->get_text()[0];
+    $section = null;
+    if ($dictionary->has_section($first_letter)) {
+        $section = $dictionary->get_section($first_letter);
+    }
+    else {
+        throw new Exception("This Dictionary does not have a Section '" . $first_letter ."'.");
+    }
+    // Add predictions to the array.
+    return $section->similar_to($keyword);
+}
+
+function phrase_predictions(Phrase $phrase, Dictionary $dictionary) {
+    $keywords = $phrase->get_all_keywords();
+    $predictions = [];
+    foreach ($keywords as $index => $keyword) {
+        if ($keyword->is_misspelled()) {
+            // Add predictions to the array.
+            $predictions = array_merge($predictions, keyword_predictions($keyword, $dictionary));
+        }
+    }
+    return $predictions;
+}
+
+function create_suggestions_from_history(Phrase $phrase, PDO $pdo, int $site_id, int $limit = 10) {
+    $suggestions = [];
+    // Find all previous searches that contain the currently typed phrase
+    $sql = "SELECT search_phrase,COUNT(search_phrase) AS times_searched FROM searches WHERE site_id = ? AND INSTR(search_phrase, ?)>0 AND INSTR(search_phrase, ?)<=" . strlen($phrase) . " GROUP BY search_phrase ORDER BY times_searched DESC";
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$site_id, $phrase->to_string(), $phrase->to_string()]);
+    $suggestions = $statement->fetchAll();
+    $suggestions = array_slice($suggestions, 0, $limit); // Ensure that we have at most $limit suggestions
+    
+    foreach ($suggestions as $i => $suggestion) {
+        // String to Phrase conversion
+        $terms = explode(' ', $suggestion);
+        $keywords = [];
+        foreach ($terms as $j => $term) {
+            $keywords[] = new Keyword($term, $j);
+        }
+        $new_phrase = new Phrase($keywords);
+        $suggestions[$i] = new Suggestion($phrase, $new_phrase);
+    }
+    return $suggestions;
+}
+
+// This takes every Prediction and outputs all possible combinations that are as long as the prediction with the highest get_index() value.
+function create_suggestions_from_predictions(Phrase $phrase, array $predictions) {
+    $phrases = []; // Holds both partial and full suggestions (held as Keyword objects, not Prediction objects)
+    foreach ($phrase->get_all_keywords() as $index => $keyword) {
+        // Identify the keywords which belong in the suggestion's current $index.
+        $round = []; // Holds prediction strings for this round.
+        if ($keyword->is_misspelled()) {
+            foreach ($predictions as $prediction) {
+                $hasMatchingIndex = $prediction->get_index() === $index;
+                $hasMorePossibilities = $prediction->get_index() <= $index;
+                if ($hasMatchingIndex && $hasMorePossibilities) {
+                    $round[] = $prediction->get_prediction(); // Note that get_prediction() returns a Keyword object.
+                }
+            }
+        }
+        else {
+            $round[] = $keyword;
+        }
+
+        // For every one Phrase within $phrases, copy count($round) Phrases to a new array.
+        if (count($phrases) <= 0) {
+            foreach($round as $prediction) {
+                $phrases[] = new Phrase([$prediction]);
+            }
+        }
+        else {
+            // There's at least one Phrase in the $phrases array. 
+            $new_phrases = [];
+            foreach ($phrases as $partial_phrase) {
+                $fragments = []; // Create new array
+                foreach ($round as $keyword) {
+                    $new_phrase = new Phrase($partial_phrase->get_all_keywords()); // Create new Phrase for each prediction
+                    $new_phrase->set_keyword($keyword, $keyword->get_index());
+                    $fragments[] = $new_phrase;
+                }
+                $new_phrases = array_merge($new_phrases, $fragments);
+            }
+            $phrases = array_merge($phrases, $new_phrases);
+        }
+    }
+
+    // Once we have every Phrase built within the $phrases array,
+    // remove each Phrase which is shorter than the input $phrase
+    // and create Suggestions out of valid Phrases.
+    $suggestions = [];
+    foreach ($phrases as $possible_suggestion) {
+        if ($possible_suggestion->length() === $phrase->length()) {
+            $suggestions[] = new Suggestion($phrase, $possible_suggestion);
+        }
+    }
+    return $suggestions;
+}
+
+function fetch_keyword_results(array $keywords, PDO $pdo, int $site_id) {
+    $keyword_strings = []; // Used to hold Prediction and Keyword text
+
+    // Find how many keywords start with each letter.
+    $totals = []; // Tracks the total number of predictions with the same first letters.
+    foreach ($keywords as $keyword) {
+        // Verify that this entry within the array is an object.
+        if (gettype($keyword) !== "object") {
+            trigger_error("Entry within array is a " . gettype($keyword) . ". Must be either a Keyword or Prediction object. Entry has been skipped.", E_USER_WARNING);
+            continue;
+        }
+
+        // Next, verify that this object is either a Keyword or a Prediction.
+        $first_letter = "";
+        if (get_class($keyword) === "Keyword") {
+            $keyword_strings[] = $keyword->get_text();
+            $first_letter = $keyword->get_text()[0];
+        }
+        else if (get_class($keyword) === "Prediction") {
+            $keyword_strings[] = $keyword->get_prediction()->get_text();
+            $first_letter = $keyword->get_prediction()->get_text()[0];
+        }
+        else {
+            trigger_error("Entry within array is of the class " . get_class($keyword) . ". Must be either a Keyword or Prediction object. Entry has been skipped.", E_USER_WARNING);
+            continue;
+        }
+
+        // Increment the total.
+        if (isset($totals[$first_letter])) {
+            $totals[$first_letter]++;
+        }
+        else {
+            $totals[$first_letter] = 1;
+        }
+    }
+
+    // Sort the totals and the keyword_strings to ensure a predictable order.
+    ksort($totals);
+    natcasesort($keyword_strings);
+    $keyword_strings = array_values($keyword_strings); // Re-index the keys so that the entires of $keyword_strings array are ordered as expected.
+
+    // Generate the SQL string
+    $sql = '';
+    foreach ($totals as $first_letter => $total) {
+        $pdo_str = create_pdo_placeholder_str($total, 1);
+        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $first_letter . ' WHERE site_id = ? AND keyword IN ' . $pdo_str . ' union ALL ';
+    }
+
+    // Replace 'union ALL' with an ORDER BY clause
+    $sql = substr($sql, 0, -10);
+    $sql .= 'ORDER BY dupe_total DESC'; 
+
+    // Prepare and return the PDO statement
+    $statement = $pdo->prepare($sql);
+    $sum = 1; // Used for binding values to the correct indices.
+    $index = 0; // Used for 
+    foreach ($totals as $total) {
+        $statement->bindValue($sum, $site_id, PDO::PARAM_INT);
+        $sum++;
+        for ($i = $index; $i < $total + $index; $i++) {
+            $statement->bindValue($sum, $keyword_strings[$i], PDO::PARAM_STR);
+            $sum++;
+        }
+        //foreach ($keyword_strings as $keyword_string) {
+        //    $statement->bindValue($sum, $keyword_string, PDO::PARAM_STR);
+        //    $sum++;
+        //}
+        $index += $total;
+    }
+    $statement->execute();
+    return $statement->fetchAll();
 }

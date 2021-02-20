@@ -72,24 +72,11 @@ try {
     $sql = "SELECT search_phrase,COUNT(search_phrase) AS times_searched FROM searches WHERE site_id = ? AND INSTR(search_phrase, ?)>0 AND INSTR(search_phrase, ?)<=" . strlen($phrase) . " GROUP BY search_phrase ORDER BY times_searched DESC";
     $statement = $pdo->prepare($sql);
     $statement->execute([$site_id, $phrase, $phrase]);
-    $suggestions = $statement->fetchAll(); // Returns an array of *indexed and associative results. Indexed is preferred.
-
-    /*foreach ($suggestions as $index => $suggestion) {
-        if ($index < $limit) {
-
-        }
-        else {
-            break;
-        }
-    }*/
+    $suggestions = $statement->fetchAll();
     $suggestions = array_slice($suggestions, 0, $limit); // Ensure that we have at most $limit suggestions
     
     for ($i = 0; $i < count($suggestions); $i++) {
         $suggestions[$i] = $suggestions[$i]['search_phrase'];
-        /*unset($suggestions[$i]['search_phrase']);
-        unset($suggestions[$i]['times_searched']);
-        unset($suggestions[$i][0]);
-        unset($suggestions[$i][1]);*/
     }
     $response['suggestions'] = $suggestions;
 } 
