@@ -22,7 +22,7 @@ ini_set('display_errors', 1);
 
 // Consider replacing relevance array with a ScoreKeeper class.
 class ScoreKeeper {
-    protected $scores;
+    public $scores;
 
     public function __construct() {
         $this->scores = [];
@@ -85,20 +85,27 @@ class Suggestion {
 
 class Phrase {
     public $keywords; // Array of Keyword objects
+    public $text;
     
     public function __construct(array $keywords) {
         $this->keywords = $keywords;
+        $this->text = $this->to_string(); // For some reason, this does not work. Use set_text as a temporary solution.
     }
 
     public function to_string() {
         $phrase = "";
         foreach ($this->keywords as $keyword) {
-            $phrase .= $keyword . " ";
+            $phrase .= $keyword->get_text() . " ";
         }
         return substr($phrase, 0, -1); // Remove the space at the end.
     }
     public function set_phrase(array $keywords) {
         $this->keywords = $keywords;
+        $this->text = $this->to_string(); // For some reason, this does not work. Use set_text as a temporary solution.
+    }
+
+    function set_text($text) {
+        $this->text = $text;
     }
 
     public function get_keyword(int $index) {
@@ -409,12 +416,12 @@ $phrase = new Phrase($original_keywords);
 // Prepares a response to identify errors and successes.
 $response = [
     'dbError' => NULL,
-    'keywords' => NULL,
     'page' => $page_to_return + 1,
     'pdoError' => NULL,
     'phrase' => NULL,
+    'predictions' => NULL,
     'results' => NULL,
-    'terms' => NULL,
+    'suggestions' => NULL,
     'timeTaken' => NULL,
     'totalPages' => NULL,
     'totalResults' => NULL,
@@ -476,298 +483,54 @@ try {
 
     $predictions = phrase_predictions($phrase, $dictionary);
     $response['predictions'] = $predictions;
+
     $suggestions = create_suggestions_from_predictions($phrase, $predictions);
     usort($suggestions, 'sort_suggestions_by_distance');
     $response['suggestions'] = $suggestions;
-    $keyword_results = fetch_keyword_results($predictions, $pdo, $site_id);
-    $response['keyword_results'] = $keyword_results;
 
-    // Contains both keywords and suggestions which will be searched within the database.
-    /*$keywords = [];
-
-    // Fill the keywords array with all possible keywords
-    foreach ($original_keywords as $index => $original_keyword) {
-        $first_letter = $original_keyword->get_text()[0];
-        $dict = new Section();
-        $dict->create($pdo, $site_id, $first_letter);
-        $is_english = $dict->search($original_keyword->get_text());
-
-        if (!$is_english) {
-            // Indicate that this phrase contains a misspelling
-            //$response['hasMisspelling'] = true;
-            $original_keyword->has_misspelling(true);
-
-            // Merge these new suggestions with all previous ones.
-            $keywords = array_merge($keywords, $dict->similar_to($original_keyword->get_text(), $index));
-        }
-        else {
-            $keywords[] = $original_keyword;
-        }
-    }*/
-
-    //usort($keywords, 'nat_cmp');
-    //$response['possible_keywords'] = $keywords;
-
-    // Tally each group of keywords with the same first letter
-    // Used to generate a big keyword search query
-    /*$groups = [];
-    $total = 0; // total refers to the total keywords with the same first letter
-    $first_letter = $keywords[0]->get_text()[0];
-    foreach ($keywords as $keyword) {
-        $keyword = $keyword->get_text();
-        // Look for any change in first letter since the last iteration.
-        // If there has been a change, reset the total counter.
-        if ($keyword[0] === $first_letter) {
-            $total += 1;
-        }
-        else {
-            $groups[] = ['first_letter' => $first_letter, 'total_keywords' => $total];
-            $first_letter = $keyword[0];
-            $total = 1;
-        }
+    // If the suggestions array is not empty, replace the original phrase with the best suggestion (the one with the smallest levenshtein distance)
+    if (isset($suggestions[0])) {
+        $phrase = $suggestions[0]->get_suggested_phrase();
     }
-    $groups[] = ['first_letter' => $first_letter, 'total_keywords' => $total]; // Store the last group.
-
-    // Generate the sql query
-    $sql = '';
-    foreach ($groups as $group) {
-        $pdo_str = create_pdo_placeholder_str($group['total_keywords'], 1);
-        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $group['first_letter'] . ' WHERE keyword IN ' . $pdo_str . ' union ALL ';
-    }
-    // Remove the extra 'union ALL' from the end of the SQL string and replace it with an ORDER BY clause
-    $sql = substr($sql, 0, -10);
-    $sql .= 'ORDER BY dupe_total DESC';
-    $statement = $pdo->prepare($sql);
-    for ($i = 0; $i < count($keywords); $i++) {
-        // Since we cannot use PDO to directly execute an array of objects,
-        // we use this for loop to solve that issue.
-        $statement->bindValue($i+1, $keywords[$i]->get_text(), PDO::PARAM_STR);
-    }
-    $statement->execute();
-    $results = $statement->fetchAll();
-
-    $response['mass_query_results'] = $results;
-    //usort($keywords, 'keyword_distance_cmp');
-
-    // Form a new search phrase to replace misspelled terms with best suggestions.
-    $phrase = NULL;
-    foreach ($original_keywords as $term_index => $original_keyword) {
-        //$keyword_found = false;
-        foreach ($keywords as $keyword) {
-            // Find the first keyword which matches the given term_index. Replace the old term with the corrected term.
-            if ($term_index === $keyword->get_term_index()) {
-                // The idea is to bold all replaced terms in the front-end when the dialog box appears "Did you mean..."
-                //$terms[$term_index] = $keyword;
-                $original_keyword->set_keyword($keyword->get_text());
-                //$keyword_found = true;
-                break;
-            }
-        }
-        //if ($keyword_found) {
-        $phrase .= $original_keyword->get_text() . ' '; // Re-create the search phrase in order to account for the new terms we're using.
-        //}
-    }
-    $phrase = substr($phrase, 0, -1); // Remove the space at the end.
-
     $response['phrase'] = $phrase;
-    $response['terms'] = $original_keywords;
+    $phrase->set_text($phrase->to_string()); // temporary fix for the Phrase objects to_string() issue.
 
-    // Generate all possible suggestions
-    $fragments = []; // Collects keywords as we go through term indices. As we go, we build on what's in this array to eventually form all possible suggestions.
-    foreach ($original_keywords as $term_index => $original_keyword) {
-        $total_fragments = count($fragments);
-        if (!$original_keyword->has_suggestion()) {
-            if ($total_fragments > 0) {
-                // Apply this term to every suggestion currently within the fragments array
-                for ($i = 0; $i < $total_fragments; $i++) {
-                    $fragments[] = $fragments[$i] . " " . $original_keyword->get_text();
-                }
-            }
-            else {
-                // Add the original term input by the user since we did not find a replacement for this term.
-                $fragments[] = $original_keyword->get_text();
-            }
-        }
-        else {
-            $found_suggestion = false;
-            foreach ($keywords as $keyword) {
-                // Collect all keywords for this current $term_index value.
-                if ($keyword->get_term_index() === $term_index) {
-                    $found_suggestion = true;
-                    if ($total_fragments > 0) {
-                        // Apply this term to every suggestion currently within the fragments array
-                        for ($i = 0; $i < $total_fragments; $i++) {
-                            $fragments[] = $fragments[$i] . " " . $keyword->get_text();
-                        }
-                    }
-                    else {
-                        $fragments[] = $keyword->get_text();
-                    }
-                }
-            }
-            if (!$found_suggestion) {
-                $fragments[] = $original_keyword->get_text();
-            }
-        }
-    }
-    // Extract all suggestions which are of the correct length.
-    $suggestions = [];
-    for ($i = 0; $i < count($fragments); $i++) {
-        $total_terms = count(explode(' ', $fragments[$i]));
-        $is_search_phrase = strcmp($fragments[$i], $phrase) === 0; // There's no point suggesting the search phrase that the user just used. Hence we filter it out of the suggestions array.
-        if ($total_terms >= count($original_keywords) && !$is_search_phrase) {
-            $suggestions[] = $fragments[$i];
-        }
-    }
-    $response['suggestions'] = $suggestions;
+    $keyword_results = fetch_keyword_dupes($phrase->get_all_keywords(), $pdo, $site_id); //fetch_keyword_results($predictions, $pdo, $site_id);
+    //$response['keyword_results'] = $keyword_results;
 
-    // Obtain all relevance scores and populate array of Results
-    $search_results = []; // Contains all Results objects.
-    $score_keeper = new ScoreKeeper();
-    foreach ($results as $result) {
-        $page_id = $result['page_id'];
-        foreach ($original_keywords as $original_keyword) {
-            $keywords_match = $result['keyword'] === $original_keyword->get_text();
-            $has_max = $original_keyword->get_max() !== null;
-            // Storing this max will come in handy when calculating relevance scores.
-            if ($keywords_match) {
-                if (!$has_max) {
-                    // Store max dupe_total for this keyword
-                    $original_keyword->set_max($result['dupe_total']);
-                }
-                $search_results[$page_id] = new Result($page_id);
-                $score = $original_keyword->relevance($result['dupe_total']);
-                $score_keeper->add_to_score($score, $page_id);
-                break;
-            }
-        }
+    $phrase_results = fetch_phrase_dupes($phrase, $pdo, $site_id);
+    //$response['phrase_results'] = $phrase_results;
+
+    // Create all results
+    $search_results = [];
+    foreach ($keyword_results as $result) {
+        $search_results[$result['page_id']] = new Result($result['page_id']);
     }
 
-    // Find all contents which contain the search phrase here. This is the algorithm:
-    // Store the page_id's and index of the phrase in the content inside an array called phraseHits.
-    // Next, iterate through the page_id and first occurance array. 
-    // On each iteration... 
-    //      Grab 70 characters of text behind and after the search phrase.
-    //      Increment the relevence score by the maximum score possible.
-    //          What's the max score possible? Multiply the length of the search terms array by 100.
-    //          How to increment the relevence score? $bins->add_bin($phraseHits['page_id'], $maxScore);
+    $score_keeper = rank_results($keyword_results, $phrase_results);
+    //$response['score_keeper'] = $score_keeper;
 
-    // Obtain results based on the whole phrase
-    $sql = 'SELECT header_id, page_id, paragraph FROM paragraphs WHERE site_id = ?';
-    $statement = $pdo->prepare($sql);
-    $statement->execute([$site_id]);
-    $results = $statement->fetchAll(); // Returns an array of indexed and associative results.
-
-    // Generate snippets for any results whose content contains the search phrase.
-    foreach ($results as $result) {
-        // Case-insensitive search for the needle (phrase) in the haystack (content)
-        $phraseMatchIndex = stripos($result['paragraph'], $phrase);
-        if ($phraseMatchIndex !== false) {
-            $inflated_score = count($original_keywords) * 100;
-            $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
-
-            $paragraph_length = strlen($result['paragraph']);
-            $charsFromPhrase = 140; // Amount of characters around the phrase to capture for the snippet.
-            $clipsAtStart = $phraseMatchIndex < $charsFromPhrase; // Check if we can get 140 characters before the phrase without going below zero.
-            $clipsAtEnd = $phraseMatchIndex + $charsFromPhrase > $paragraph_length; // Check if we can get 140 characters after the phrase without going past the snippet length.
-            $snippetStart = $phraseMatchIndex - $charsFromPhrase; // Starting index of the snippet
-            $idealLength = $charsFromPhrase * 2; // The ideal length of the snippet.
-            if ($clipsAtStart) {
-                $snippetStart = 0;
-            }
-            if ($clipsAtEnd) {
-                $idealLength = $paragraph_length - $snippetStart;
-            }
-            // Ensures whole word is captured on the beginning edge.
-            $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
-            while ($snippetStart > 0) {
-                if (!$is_space_char) {
-                    $snippetStart--;
-                }
-                else {
-                    $snippetStart++; // This removes the space from the start of the snippet.
-                    break;
-                }
-                $is_space_char = ord($result['paragraph'][$snippetStart]) === 32;
-            }
-            
-            // Ensures whole word is captured on the ending edge.
-            $snippetEnd = $snippetStart + $idealLength;
-            $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
-            while ($snippetEnd < ($paragraph_length - 1) && !$is_space_char) {
-                $idealLength++;
-                $snippetEnd++;
-                $is_space_char = ord($result['paragraph'][$snippetEnd]) === 32;
-            }
-            $snippet = substr($result['paragraph'], $snippetStart, $idealLength); // Get around 140 characters before and after the phrase.
-            // Remove line breaks from snippet.
-            $br_regex = "/<br>/";
-            while (preg_match_all($br_regex, $snippet) > 0) {
-                // Find the index of the line break
-                $match = [];
-                preg_match($br_regex, $snippet, $match, PREG_OFFSET_CAPTURE);
-                $break_index = $match[0][1];
-
-                // Check whether the line break is to the left or right of the phrase. This info is useful for substringing the snippet properly.
-                $phraseIndex = stripos($snippet, $phrase);
-                if ($break_index < $phraseIndex) {
-                    // <br> is on the left of the phrase. __ signifies the ideal cutoff in the example below.
-                    // sample text.<br>__New line of text containing phrase...
-                    $break_index = $break_index + 4;
-                    $snippet = substr($snippet, $break_index, strlen($snippet) - $break_index);
-                }
-                else {
-                    // <br> is on the right of the phrase. __ signifies the ideal cutoff in the example below.
-                    // sample text containing phrase.__<br>New line of text...
-                    $snippet = substr($snippet, 0, $break_index);
-                }
-            }
-            // Check if first word is capitalized. If not, add ellipses.
-            $capitalized_regex = "/[A-Z]/";
-            $is_capitalized = preg_match($capitalized_regex, $snippet[0]);
-            if (!$is_capitalized) {
-                $snippet = "... " . $snippet;
-            }
-            // Check if the last word ends with punctuation. If not, add ellipses.
-            $punctuation_regex = "/[.!?]/";
-            $is_stopped = preg_match($punctuation_regex, $snippet[strlen($snippet) - 1]);
-            if (!$is_stopped) {
-                $snippet = $snippet . "...";
-            }
-
-            $search_results[$result['page_id']]->add_snippet($snippet, true);
-        }
+    foreach ($phrase_results as $matched_paragraph) {
+        $snippet = generate_snippet($phrase, $matched_paragraph);
+        $search_results[$matched_paragraph['page_id']]->add_snippet($snippet, true);
     }
-
-    // Put all array keys (aka page_id's) into a separate array.
+    
     $page_ids = array_keys($score_keeper->get_all_scores());
-
-    // To comunicate with the database as few times as possible, 
-    // this SQL query gets filled with all of the page_id's that we need info for.
-    $pdo_str = create_pdo_placeholder_str(count($page_ids), 1);
-    $sql = 'SELECT page_id, path, title, description FROM pages WHERE page_id IN ' . $pdo_str;
-    $statement = $pdo->prepare($sql);
-    for ($i = 0; $i < count($page_ids); $i++) {
-        $statement->bindValue($i+1, $page_ids[$i], PDO::PARAM_INT);
-    }
-    $statement->execute();
-    $results = $statement->fetchAll();
+    $paths_and_metadata = fetch_all_paths_and_metadata($page_ids, $pdo);
+    //$response['paths_and_metadata'] = $paths_and_metadata;
 
     // Create a Result object for each search result found
-    
-    for ($i = 0; $i < count($results); $i++) {
-        $page_id = $results[$i]['page_id'];
-
+    foreach ($paths_and_metadata as $page) {
         // Ensure that this result contains a snippet.
-        $snippets = $search_results[$page_id]->get_all_snippets();
+        $snippets = $search_results[$page['page_id']]->get_all_snippets();
         if (empty($snippets) || $snippet === NULL) {
             // If no snippet was made already, just use the page description as the snippet.
-            $search_results[$page_id]->add_snippet($results[$i]['description'], false);
+            $search_results[$page['page_id']]->add_snippet($page['description'], false);
         }
         $urlNoPath = format_url($url, false);
-        $search_results[$page_id]->set_url($urlNoPath . $results[$i]['path']);
-        $search_results[$page_id]->set_title($results[$i]['title']);
-        $search_results[$page_id]->set_relevance($score_keeper->get_score($page_id));
+        $search_results[$page['page_id']]->set_url($urlNoPath . $page['path']);
+        $search_results[$page['page_id']]->set_title($page['title']);
+        $search_results[$page['page_id']]->set_relevance($score_keeper->get_score($page['page_id']));
     }
 
     // Sort the pages by their relevance score
@@ -777,7 +540,7 @@ try {
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
-    $response['results'] = $result_pages[$page_to_return];*/
+    $response['results'] = $result_pages[$page_to_return];
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
@@ -786,13 +549,13 @@ catch (Exception $e) {
 }
 
 // Store the search that was made by the user
-/*if ($page_to_return === 0) { // Only store searches that land on the first page.
+if ($page_to_return === 0) { // Only store searches that land on the first page.
     try {
         $pdo->beginTransaction();
         $sql = 'INSERT INTO searches (site_id, search_phrase) VALUES (?, ?)';
         $statement = $pdo->prepare($sql);
         $statement->bindValue(1, $site_id, PDO::PARAM_INT);
-        $statement->bindValue(2, $phrase, PDO::PARAM_STR);
+        $statement->bindValue(2, $phrase->to_string(), PDO::PARAM_STR);
         $statement->execute();
         $pdo->commit();
     }
@@ -806,7 +569,7 @@ catch (Exception $e) {
             $pdo->rollBack();
         }
     }
-}*/
+}
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
@@ -922,7 +685,7 @@ function keyword_distance_cmp($a, $b) {
     return ($a_dist < $b_dist) ? -1 : 1;
 }
 
-// Input: URL received from the frontend.
+// Input: URL string.
 //        (optional) Boolean that determines whether to end the url with a '/'
 // Output: URL with or without a path.
 // Ensures a given URL has (or doesnt have) a path.
@@ -1095,6 +858,7 @@ function create_suggestions_from_predictions(Phrase $phrase, array $predictions)
     // and create Suggestions out of valid Phrases.
     $suggestions = [];
     foreach ($phrases as $possible_suggestion) {
+        $possible_suggestion->set_text($possible_suggestion->to_string()); // temporary fix for the Phrase objects to_string() issue.
         if ($possible_suggestion->length() === $phrase->length()) {
             $suggestions[] = new Suggestion($phrase, $possible_suggestion);
         }
@@ -1102,7 +866,7 @@ function create_suggestions_from_predictions(Phrase $phrase, array $predictions)
     return $suggestions;
 }
 
-function fetch_keyword_results(array $keywords, PDO $pdo, int $site_id) {
+function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     $keyword_strings = []; // Used to hold Prediction and Keyword text
 
     // Find how many keywords start with each letter.
@@ -1170,6 +934,163 @@ function fetch_keyword_results(array $keywords, PDO $pdo, int $site_id) {
         //    $sum++;
         //}
         $index += $total;
+    }
+    $statement->execute();
+    return $statement->fetchAll();
+}
+
+function fetch_phrase_dupes(Phrase $phrase, PDO $pdo, int $site_id) {
+    // Obtain results based on the whole phrase
+    $sql = 'SELECT header_id, page_id, paragraph FROM paragraphs WHERE site_id = ? AND INSTR(paragraph, ?)';
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$site_id, $phrase->to_string()]);
+    return $statement->fetchAll();
+}
+
+function get_relevance(int $dupe_total, int $max) {
+    return ceil(($dupe_total / $max) * 100);
+}
+
+// Relies on the keyword_results being ordered by the dupe_total in descending order.
+function rank_results($keyword_results, $phrase_results) {
+    // Obtain all relevance scores and populate array of Results
+    $search_results = []; // Contains all Results objects.
+    $maxes = []; // Holds each keywords highest dupe totals.
+    $score_keeper = new ScoreKeeper();
+
+    if ($keyword_results !== NULL) {
+        // Add to score based on individual keywords
+        foreach ($keyword_results as $result) {
+            $page_id = $result['page_id'];
+            $search_results[$page_id] = new Result($page_id);
+            if (!isset($maxes[$result['keyword']])) {
+                $maxes[$result['keyword']] = $result['dupe_total'];
+            }
+            $score = get_relevance($result['dupe_total'], $maxes[$result['keyword']]);
+            $score_keeper->add_to_score($score, $page_id);
+            /*foreach ($phrase->get_all_keywords() as $original_keyword) {
+                $keywords_match = $result['keyword'] === $original_keyword->get_text();
+                $has_max = $original_keyword->get_max() !== null;
+                // Storing this max will come in handy when calculating relevance scores.
+                if ($keywords_match) {
+                    if (!$has_max) {
+                        // Store max dupe_total for this keyword
+                        $original_keyword->set_max($result['dupe_total']);
+                    }
+                    $search_results[$page_id] = new Result($page_id);
+                    $score = $original_keyword->relevance($result['dupe_total']);
+                    $score_keeper->add_to_score($score, $page_id);
+                    break;
+                }
+            }*/
+        }
+    }
+    
+    if ($phrase_results !== NULL) {
+        // Add to score based on the whole phrase.
+        foreach ($phrase_results as $result) {
+            // Case-insensitive search for the needle (phrase) in the haystack (content)
+            //$phraseMatchIndex = stripos($result['paragraph'], $phrase);
+            //if ($phraseMatchIndex !== false) {
+                $inflated_score = count($maxes) * 100;
+                $score_keeper->add_to_score($inflated_score, $result['page_id']); //[$result['page_id']] += count($keywords) * 100;
+            //}
+        }
+    }
+    return $score_keeper;
+}
+
+function generate_snippet($phrase, $matched_paragraph) {
+    // $matched_paragraph is a paragraph that contains the phrase as a substring.
+    // Generate snippets for any results whose content contains the search phrase.
+
+    // Case-insensitive search for the needle (phrase) in the haystack (content)
+    $phraseMatchIndex = stripos($matched_paragraph['paragraph'], $phrase->to_string());
+
+    $paragraph_length = strlen($matched_paragraph['paragraph']);
+    $charsFromPhrase = 140; // Amount of characters around the phrase to capture for the snippet.
+    $clipsAtStart = $phraseMatchIndex < $charsFromPhrase; // Check if we can get 140 characters before the phrase without going below zero.
+    $clipsAtEnd = $phraseMatchIndex + $charsFromPhrase > $paragraph_length; // Check if we can get 140 characters after the phrase without going past the snippet length.
+    $snippetStart = $phraseMatchIndex - $charsFromPhrase; // Starting index of the snippet
+    $idealLength = $charsFromPhrase * 2; // The ideal length of the snippet.
+    if ($clipsAtStart) {
+        $snippetStart = 0;
+    }
+    if ($clipsAtEnd) {
+        $idealLength = $paragraph_length - $snippetStart;
+    }
+    // Ensures whole word is captured on the beginning edge.
+    $is_space_char = ord($matched_paragraph['paragraph'][$snippetStart]) === 32;
+    while ($snippetStart > 0) {
+        if (!$is_space_char) {
+            $snippetStart--;
+        }
+        else {
+            $snippetStart++; // This removes the space from the start of the snippet.
+            break;
+        }
+        $is_space_char = ord($matched_paragraph['paragraph'][$snippetStart]) === 32;
+    }
+    
+    // Ensures whole word is captured on the ending edge.
+    $snippetEnd = $snippetStart + $idealLength;
+    $is_space_char = ord($matched_paragraph['paragraph'][$snippetEnd]) === 32;
+    while ($snippetEnd < ($paragraph_length - 1) && !$is_space_char) {
+        $idealLength++;
+        $snippetEnd++;
+        $is_space_char = ord($matched_paragraph['paragraph'][$snippetEnd]) === 32;
+    }
+    $snippet = substr($matched_paragraph['paragraph'], $snippetStart, $idealLength); // Get around 140 characters before and after the phrase.
+
+    // Remove line breaks from snippet.
+    $br_regex = "/<br>/";
+    while (preg_match_all($br_regex, $snippet) > 0) {
+        // Find the index of the line break
+        $match = [];
+        preg_match($br_regex, $snippet, $match, PREG_OFFSET_CAPTURE);
+        $break_index = $match[0][1];
+
+        // Check whether the line break is to the left or right of the phrase. This info is useful for substringing the snippet properly.
+        $phraseIndex = stripos($snippet, $phrase->to_string());
+        if ($break_index < $phraseIndex) {
+            // <br> is on the left of the phrase. __ signifies the ideal cutoff in the example below.
+            // sample text.<br>__New line of text containing phrase...
+            $break_index = $break_index + 4;
+            $snippet = substr($snippet, $break_index, strlen($snippet) - $break_index);
+        }
+        else {
+            // <br> is on the right of the phrase. __ signifies the ideal cutoff in the example below.
+            // sample text containing phrase.__<br>New line of text...
+            $snippet = substr($snippet, 0, $break_index);
+        }
+    }
+
+    // Check if first word is capitalized. If not, add ellipses.
+    $capitalized_regex = "/[A-Z]/";
+    $is_capitalized = preg_match($capitalized_regex, $snippet[0]);
+    if (!$is_capitalized) {
+        $snippet = "... " . $snippet;
+    }
+
+    // Check if the last word ends with punctuation. If not, add ellipses.
+    $punctuation_regex = "/[.!?]/";
+    $is_stopped = preg_match($punctuation_regex, $snippet[strlen($snippet) - 1]);
+    if (!$is_stopped) {
+        $snippet = $snippet . "...";
+    }
+
+    //$search_results[$matched_paragraph['page_id']]->add_snippet($snippet, true);
+    return $snippet;
+}
+
+function fetch_all_paths_and_metadata(array $page_ids, PDO $pdo) {
+    // To comunicate with the database as few times as possible, 
+    // this SQL query gets filled with all of the page_id's that we need info for.
+    $pdo_str = create_pdo_placeholder_str(count($page_ids), 1);
+    $sql = 'SELECT page_id, path, title, description FROM pages WHERE page_id IN ' . $pdo_str;
+    $statement = $pdo->prepare($sql);
+    for ($i = 0; $i < count($page_ids); $i++) {
+        $statement->bindValue($i+1, $page_ids[$i], PDO::PARAM_INT);
     }
     $statement->execute();
     return $statement->fetchAll();

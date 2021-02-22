@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", function() {
         console.log(data);
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
-        displayLastSearch(data.phrase);
+        displayLastSearch(data.phrase.text);
         populateSuggestions(data.suggestions, data.url);
 
         if (data.results?.length > 0) {
@@ -94,8 +94,9 @@ const displayLastSearch = (searchPhrase) => {
 const populateSuggestions = (suggestions, url) => {
   const otherSuggestions = document.getElementById("otherSuggestions");
   otherSuggestions.innerHTML = "";
-  suggestions.forEach(suggestion => {
-    let badge = createSuggestionBadge(suggestion, url);
+  suggestions.forEach(item => {
+    let text = item.suggestion.text;
+    let badge = createSuggestionBadge(text, url);
     otherSuggestions.append(badge);
   });
 }
@@ -116,7 +117,7 @@ const createSuggestionBadge = (suggestion, url) => {
       console.log(data);
       results.innerHTML = ""; // Clear out the old results to make room for the new.
       pageBar.innerHTML = "";
-      displayLastSearch(data.phrase);
+      displayLastSearch(data.phrase.text);
       populateSuggestions(data.suggestions, data.url);
 
       if (data.results?.length > 0) {
@@ -234,7 +235,7 @@ const createPageButtons = (searchData) => {
     // Page turn listener
     pageButton.addEventListener("click", (e) => {
       let page = e.target.attributes[1].value;
-      search(searchData.phrase, "https://www.armorshieldroof.com/", page)
+      search(searchData.phrase.text, "https://www.armorshieldroof.com/", page)
       .then(res => {
         console.log(res);
         resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
@@ -266,7 +267,7 @@ const populate = (res, container) => {
       //console.log("snippet: ", snippet);
       //console.log("terms: ", res.terms);
       formattedSnippets[index] = {
-        text: boldSearchTerms(snippet.text, res.terms),
+        text: boldSearchTerms(snippet.text, res.phrase.keywords),
         fromPageContent: snippet.fromPageContent
       };
     });
@@ -335,7 +336,7 @@ const populateDropdown = (suggestions, url) => {
         suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
-        displayLastSearch(data.phrase);
+        displayLastSearch(data.phrase.text);
         populateSuggestions(data.suggestions, data.url);
 
         if (data.results?.length > 0) {
