@@ -2,6 +2,7 @@ window.addEventListener("DOMContentLoaded", function() {
   const url = "https://www.armorshieldroof.com/"; //window.location.href;
   const results = document.getElementById("results");
   const pageBar = document.getElementById("pageBar");
+  const otherSuggestions = document.getElementById("otherSuggestions");
 
   let input = document.getElementById("urlInput");
   let crawlBtn = document.getElementById("newSite");
@@ -22,6 +23,7 @@ window.addEventListener("DOMContentLoaded", function() {
   let searchBar = document.getElementById("searchBar");
   let searchButton = document.getElementById("searchButton");
   let postSearchSuggestions = document.getElementById("suggestions"); // Suggestions that are shown after a search.
+  const phraseElem = document.getElementById("phrase");
 
   searchButton.addEventListener("click", (e) => {
     console.log(searchBar.value);
@@ -33,12 +35,18 @@ window.addEventListener("DOMContentLoaded", function() {
         console.log(data);
         results.innerHTML = ""; // Clear out the old results to make room for the new.
         pageBar.innerHTML = "";
-        displayLastSearch(data.phrase.text);
+        phraseElem.innerHTML = data.phrase.text;
+        otherSuggestions.innerHTML = "";
+        data.suggestions.forEach(item => {
+          let text = item.suggestion.text;
+          let badge = createSuggestionBadge(text, url);
+          otherSuggestions.append(badge);
+        });
         populateSuggestions(data.suggestions, data.url);
 
         if (data.results?.length > 0) {
           // Populate the results container with results.
-          populate(data, results);
+          populateResults(data, results);
           pageBar.appendChild(createPageButtons(data));
           setCurrentPage(data.page);
           setTotalPages(data.totalPages);
@@ -59,10 +67,37 @@ window.addEventListener("DOMContentLoaded", function() {
   searchBar.addEventListener("keyup", (e) => {
     console.log(e);
     const searchDropdown = document.getElementById("searchDropdown");
-    get_suggestions(searchBar.value, url, limit = 10)
+    fetchSuggestions(searchBar.value, url, limit = 10)
     .then(data => {
       console.log(data);
-      populateDropdown(data.suggestions, data.url);
+      populateDropdown(data.suggestions, data.url, (e) => {
+        let suggestion = e.target.value;
+        searchBar.value = e.target.value;
+        search(suggestion, url)
+        .then(data => {
+          console.log(data);
+          suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
+          results.innerHTML = ""; // Clear out the old results to make room for the new.
+          pageBar.innerHTML = "";
+          phraseElem.innerHTML = data.phrase.text;
+          populateSuggestions(data.suggestions, data.url);
+
+          if (data.results?.length > 0) {
+            // Populate the results container with results.
+            populate(data, results);
+            pageBar.appendChild(createPageButtons(data));
+            setCurrentPage(data.page);
+            setTotalPages(data.totalPages);
+          }
+          else {
+            setCurrentPage(0);
+            setTotalPages(0);
+          }
+        })
+        .catch(err => {
+          console.log("ERROR: ", err);
+        });
+      });
       if (data.suggestions.length > 0) {
         searchDropdown.classList.add("hasSuggestions");
       }
@@ -122,7 +157,7 @@ const createSuggestionBadge = (suggestion, url) => {
 
       if (data.results?.length > 0) {
         // Populate the results container with results.
-        populate(data, results);
+        populateResults(data, results);
         pageBar.appendChild(createPageButtons(data));
         setCurrentPage(data.page);
         setTotalPages(data.totalPages);
@@ -191,7 +226,7 @@ const createResult = (data = {url: null, title: null, snippet: null}) => {
 const boldSearchTerms = (str, terms) => {
   let bolded = str;
   terms.forEach(term => {
-    let innerRegex = " " + term.keyword + "(?=,| )";
+    let innerRegex = " " + term.text + "(?=,| )";
     let regex = new RegExp(innerRegex, "gi");
 
     // This loop adds the bold tags to every regex match it finds.
@@ -199,7 +234,7 @@ const boldSearchTerms = (str, terms) => {
     let match = regex.exec(bolded);
     while (match) {
       let termStart = match.index + 1; // We add 1 because the regex includes a space at the beginning. Index.
-      let termEnd = termStart + term.keyword.length; // Index.
+      let termEnd = termStart + term.text.length; // Index.
       let firstHalf = bolded.substring(0, termStart); // Each half excludes the matched string.
       //console.log("firstHalf", firstHalf);
       let secondHalf = bolded.substring(termEnd, bolded.length);
@@ -239,7 +274,7 @@ const createPageButtons = (searchData) => {
       .then(res => {
         console.log(res);
         resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
-        populate(res, resultsElem); // Populate the results container with results.
+        populateResults(res, resultsElem); // Populate the results container with results.
         setCurrentPage(res.page);
         setTotalPages(res.totalPages);
       })
@@ -259,7 +294,7 @@ const createPageButtons = (searchData) => {
 //        container is the results container
 // Output: None.
 // Populate the results container with results.
-const populate = (res, container) => {
+const populateResults = (res, container) => {
   res.results.forEach(result => {
     // Format each snippet.
     let formattedSnippets = [];
@@ -274,17 +309,21 @@ const populate = (res, container) => {
 
     // Concatenate all formatted snippets into one.
     let completeSnippet = '';
+    if (formattedSnippets[0] !== null) {
+      completeSnippet = formattedSnippets[0].text;
+    }
     /*if (result.snippets[0]?.fromPageContent) {
       // If the first part of the snippet is in the middle of the page's content, add ellipses at the beginning of the snippet.
       completeSnippet = '... ';
     }*/
-    formattedSnippets.forEach(snippet => {
+    /*formattedSnippets.forEach(snippet => {
       // Ensure that the snippet doesn't get too long (longer than 350 chars).
       let newLength = completeSnippet.length + snippet.text.length;
       if (newLength < 350) {
         completeSnippet += snippet.text;
       }
-    })
+    })*/
+
     /*if (completeSnippet !== '') {
       completeSnippet = completeSnippet.substring(0, completeSnippet.length - 6); // Remove the ending ' ... '
     }*/
@@ -319,45 +358,22 @@ const setTotalPages = (totalPages) => {
 // Input: (Array) Suggestions array retrieved from suggestions.php
 // Output: None.
 // Populate the suggestions dropdown with suggestions from the backend.
-const populateDropdown = (suggestions, url) => {
+const populateDropdown = (suggestions, url, onClick = null) => {
   const searchBar = document.getElementById("searchBar");
   const suggestionsElem = document.getElementById("suggestions");
+  const phraseElem = document.getElementById("phrase");
   const list = document.getElementById("preSearchSuggestions");
   list.innerHTML = ""; // Clear old suggestions.
 
   suggestions.forEach(suggestion => {
     let item = document.createElement("li");
     item.innerText = suggestion;
-    item.addEventListener("click", (e) => {
-      searchBar.value = suggestion;
-      search(suggestion, url)
-      .then(data => {
-        console.log(data);
-        suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
-        results.innerHTML = ""; // Clear out the old results to make room for the new.
-        pageBar.innerHTML = "";
-        displayLastSearch(data.phrase.text);
-        populateSuggestions(data.suggestions, data.url);
-
-        if (data.results?.length > 0) {
-          // Populate the results container with results.
-          populate(data, results);
-          pageBar.appendChild(createPageButtons(data));
-          setCurrentPage(data.page);
-          setTotalPages(data.totalPages);
-        }
-        else {
-          setCurrentPage(0);
-          setTotalPages(0);
-        }
-      })
-      .catch(err => {
-        console.log("ERROR: ", err);
-      });
-    })
+    if (onClick !== null) {
+      item.addEventListener("click", onClick);
+    }
     list.append(item);
   });
-}
+} // Bad
 
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
@@ -423,7 +439,7 @@ async function search(phrase, baseUrl, page = 1) {
 //        (Integer) limit tells the server the maximum amount of suggestions to return.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function get_suggestions(phrase, baseUrl, limit = 10) {
+async function fetchSuggestions(phrase, baseUrl, limit = 10) {
   let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php";
   // Default options are marked with *
   const response = await fetch(phpUrl, {

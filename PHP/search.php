@@ -166,15 +166,15 @@ class Prediction {
 class Keyword {
     //public $original; // Original term that this keyword references.
     //protected $pages_found;
-    public $keyword;
+    public $text;
     public $index; // Index of the term which this keyword references.
     public $is_misspelled; // Flag for whether the original keyword is misspelled.
     //public $has_suggestion;
     //public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
     protected $max; // Maximum dupe_totals of this keyword in the database.
 
-    public function __construct(string $keyword, int $index) {
-        $this->keyword = $keyword;
+    public function __construct(string $text, int $index) {
+        $this->text = $text;
         $this->index = $index;
         $this->max = NULL;
         $this->is_misspelled = false;
@@ -185,11 +185,11 @@ class Keyword {
     }
 
     public function get_text() {
-        return $this->keyword;
+        return $this->text;
     }
 
     public function set_text(string $new_keyword) {
-        $this->keyword = $new_keyword;
+        $this->text = $new_keyword;
     }
 
     public function is_misspelled(bool $bool = null) {
@@ -746,7 +746,8 @@ function spell_check_keyword(Keyword $keyword, Dictionary $dictionary) {
     }
 
     $is_english = $section->search($keyword->get_text());
-    if (!$is_english) {
+    $is_short = strlen($keyword->get_text()) <= 2;
+    if (!$is_english && !$is_short) {
         $keyword->is_misspelled(true);
     }
 }
@@ -854,12 +855,15 @@ function create_suggestions_from_predictions(Phrase $phrase, array $predictions)
     }
 
     // Once we have every Phrase built within the $phrases array,
-    // remove each Phrase which is shorter than the input $phrase
-    // and create Suggestions out of valid Phrases.
+    // remove each Phrase which is shorter than the input $phrase,
+    // create Suggestions out of valid Phrases, and
+    // remove each Suggestion which has a distance of 0.
     $suggestions = [];
     foreach ($phrases as $possible_suggestion) {
         $possible_suggestion->set_text($possible_suggestion->to_string()); // temporary fix for the Phrase objects to_string() issue.
-        if ($possible_suggestion->length() === $phrase->length()) {
+        $has_same_length = $possible_suggestion->length() === $phrase->length();
+        $has_same_distance = levenshtein($possible_suggestion->to_string(), $phrase->to_string()) === 0;
+        if ($has_same_length && !$has_same_distance) {
             $suggestions[] = new Suggestion($phrase, $possible_suggestion);
         }
     }
@@ -1012,13 +1016,15 @@ function generate_snippet($phrase, $matched_paragraph) {
     $clipsAtStart = $phraseMatchIndex < $charsFromPhrase; // Check if we can get 140 characters before the phrase without going below zero.
     $clipsAtEnd = $phraseMatchIndex + $charsFromPhrase > $paragraph_length; // Check if we can get 140 characters after the phrase without going past the snippet length.
     $snippetStart = $phraseMatchIndex - $charsFromPhrase; // Starting index of the snippet
+    $distance_to_end = $paragraph_length - $snippetStart;
     $idealLength = $charsFromPhrase * 2; // The ideal length of the snippet.
     if ($clipsAtStart) {
         $snippetStart = 0;
     }
     if ($clipsAtEnd) {
-        $idealLength = $paragraph_length - $snippetStart;
+        $idealLength = $distance_to_end;
     }
+    
     // Ensures whole word is captured on the beginning edge.
     $is_space_char = ord($matched_paragraph['paragraph'][$snippetStart]) === 32;
     while ($snippetStart > 0) {
@@ -1031,16 +1037,21 @@ function generate_snippet($phrase, $matched_paragraph) {
         }
         $is_space_char = ord($matched_paragraph['paragraph'][$snippetStart]) === 32;
     }
-    
+    $snippet = substr($matched_paragraph['paragraph'], $snippetStart, $distance_to_end); // Cut the beginning of the paragraph where the snippet will start.
+    if (strlen($snippet) > $idealLength) {
+        $snippet = wordwrap($snippet, $idealLength);
+        $snippet = substr($snippet, 0, strpos($snippet, "\n"));
+    }
+    /*
     // Ensures whole word is captured on the ending edge.
     $snippetEnd = $snippetStart + $idealLength;
     $is_space_char = ord($matched_paragraph['paragraph'][$snippetEnd]) === 32;
-    while ($snippetEnd < ($paragraph_length - 1) && !$is_space_char) {
+    while (($snippetEnd < ($paragraph_length - 1)) && !$is_space_char) {
         $idealLength++;
         $snippetEnd++;
         $is_space_char = ord($matched_paragraph['paragraph'][$snippetEnd]) === 32;
-    }
-    $snippet = substr($matched_paragraph['paragraph'], $snippetStart, $idealLength); // Get around 140 characters before and after the phrase.
+    }*/
+    //$snippet = substr($matched_paragraph['paragraph'], $snippetStart, $idealLength); // Get around 140 characters before and after the phrase.
 
     // Remove line breaks from snippet.
     $br_regex = "/<br>/";
