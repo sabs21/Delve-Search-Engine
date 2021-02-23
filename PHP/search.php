@@ -84,7 +84,7 @@ class Suggestion {
 }
 
 class Phrase {
-    public $keywords; // Array of Keyword objects
+    public $keywords; // Array of Keyword and Number objects
     public $text;
     
     public function __construct(array $keywords) {
@@ -160,6 +160,23 @@ class Prediction {
 
     public function get_distance() {
         return $this->distance;
+    }
+}
+
+class Number {
+    public $text;
+    public $index;
+
+    public function __construct(string $text, int $index) {
+        $this->text = $text;
+        $this->index = $index;
+    }
+
+    public function get_text() {
+        return $this->text;
+    }
+    public function get_index() {
+        return $this->index;
     }
 }
 
@@ -736,7 +753,14 @@ function create_pdo($credentials) {
 }
 
 function spell_check_keyword(Keyword $keyword, Dictionary $dictionary) {
+    // Ensure the keyword is actually a keyword and is not a number.
     $first_letter = $keyword->get_text()[0];
+    $number_regex = "/[0-9]/";
+    $is_number = preg_match($number_regex, $first_letter);
+    if ($is_number) {
+        return;
+    }
+
     $section = null;
     if ($dictionary->has_section($first_letter)) {
         $section = $dictionary->get_section($first_letter);
@@ -874,7 +898,7 @@ function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     $keyword_strings = []; // Used to hold Prediction and Keyword text
 
     // Find how many keywords start with each letter.
-    $totals = []; // Tracks the total number of predictions with the same first letters.
+    $totals = []; // Tracks the total number of keywords with the same first letters.
     foreach ($keywords as $keyword) {
         // Verify that this entry within the array is an object.
         if (gettype($keyword) !== "object") {
@@ -915,7 +939,14 @@ function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     $sql = '';
     foreach ($totals as $first_letter => $total) {
         $pdo_str = create_pdo_placeholder_str($total, 1);
-        $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $first_letter . ' WHERE site_id = ? AND keyword IN ' . $pdo_str . ' union ALL ';
+        $number_regex = "/[0-9]/";
+        $is_number = preg_match($number_regex, $first_letter);
+        if ($is_number) {
+            $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_num WHERE site_id = ? AND keyword IN ' . $pdo_str . ' union ALL ';
+        }
+        else {
+            $sql .= 'SELECT page_id, keyword, dupe_total FROM keywords_' . $first_letter . ' WHERE site_id = ? AND keyword IN ' . $pdo_str . ' union ALL ';
+        }
     }
 
     // Replace 'union ALL' with an ORDER BY clause
