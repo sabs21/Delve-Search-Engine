@@ -479,7 +479,7 @@ try {
   }
 
   // Insert keywords which start with a number into the keywords_num table
-  $sql = 'INSERT INTO keywords_num SELECT * FROM `keywords` WHERE `keyword` REGEXP \'^[0-9]\'';
+  $sql = 'INSERT INTO keywords_digit SELECT * FROM `keywords` WHERE `keyword` REGEXP \'^[0-9]\'';
   $statement = $pdo->prepare($sql);
   $statement->execute();
 

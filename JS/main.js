@@ -270,7 +270,7 @@ const createPageButtons = (searchData) => {
     // Page turn listener
     pageButton.addEventListener("click", (e) => {
       let page = e.target.attributes[1].value;
-      search(searchData.phrase.text, "https://www.armorshieldroof.com/", page)
+      search(searchData.phrase.text, searchData.url, page)
       .then(res => {
         console.log(res);
         resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
@@ -365,9 +365,9 @@ const populateDropdown = (suggestions, url, onClick = null) => {
   const list = document.getElementById("preSearchSuggestions");
   list.innerHTML = ""; // Clear old suggestions.
 
-  suggestions.forEach(suggestion => {
+  suggestions.forEach(data => {
     let item = document.createElement("li");
-    item.innerText = suggestion;
+    item.innerText = data.suggestion.text;
     if (onClick !== null) {
       item.addEventListener("click", onClick);
     }
@@ -409,11 +409,21 @@ async function crawl(urlToCrawl) {
 //        page tells the server what page to return. Each page has 10 results.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function search(phrase, baseUrl, page = 1) {
-  let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+async function search_old(phrase, baseUrl, method, page = 1) {
+  //let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page;
+  let body = null;
+  if (method === "POST") {
+    phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+    body = JSON.stringify({
+      url: baseUrl,
+      phrase: phrase,
+      page: page
+    });
+  }
   // Default options are marked with *
   const response = await fetch(phpUrl, {
-    method: 'POST', // *GET, POST, PUT, DELETE, etc.
+    method: method, // *GET, POST, PUT, DELETE, etc.
     mode: 'cors', // no-cors, *cors, same-origin
     cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
     credentials: 'same-origin', // include, *same-origin, omit
@@ -423,14 +433,33 @@ async function search(phrase, baseUrl, page = 1) {
     },
     redirect: 'follow', // manual, *follow, error
     referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-    body: JSON.stringify({
-      url: baseUrl,
-      phrase: phrase,
-      page: page
-    }) // body data type must match "Content-Type" header
+    body: body // body data type must match "Content-Type" header
   });
   //console.log(response.text());
   //return response.text();
+  return response.json();
+}
+
+// Input: Phrase is the search phrase that the user types.
+//        baseUrl is used to generate the sitemap url and identify which site to search.
+//        page tells the server what page to return. Each page has 10 results.
+// Output: Response in json format.
+// Search the database for all pages related to your search phrase.
+async function search(phrase, baseUrl, page = 1) {
+  //let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page + "&forced_search=" + true;
+  // Default options are marked with *
+  const response = await fetch(phpUrl, {
+    method: "GET", // *GET, POST, PUT, DELETE, etc.
+    mode: 'cors', // no-cors, *cors, same-origin
+    cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+    credentials: 'same-origin', // include, *same-origin, omit
+    //headers: {
+    //  'Content-Type': 'application/json'
+    //},
+    redirect: 'follow', // manual, *follow, error
+    referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+  });
   return response.json();
 }
 

@@ -2,6 +2,8 @@
 
 // This file will not check whether there is an entry that already exists with the same base_url.
 // Prior logic must determine that this site is not currently within the database.
+//
+// Search.php only accepts GET requests
 
 /////////////////////////
 // PRE-INITIALIZATION //
@@ -84,7 +86,7 @@ class Suggestion {
 }
 
 class Phrase {
-    public $keywords; // Array of Keyword and Number objects
+    public $keywords; // Array of Keyword objects
     public $text;
     
     public function __construct(array $keywords) {
@@ -163,29 +165,13 @@ class Prediction {
     }
 }
 
-class Number {
-    public $text;
-    public $index;
-
-    public function __construct(string $text, int $index) {
-        $this->text = $text;
-        $this->index = $index;
-    }
-
-    public function get_text() {
-        return $this->text;
-    }
-    public function get_index() {
-        return $this->index;
-    }
-}
-
 class Keyword {
     //public $original; // Original term that this keyword references.
     //protected $pages_found;
     public $text;
     public $index; // Index of the term which this keyword references.
     public $is_misspelled; // Flag for whether the original keyword is misspelled.
+    public $has_symbol;
     //public $has_suggestion;
     //public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
     protected $max; // Maximum dupe_totals of this keyword in the database.
@@ -214,6 +200,13 @@ class Keyword {
             $this->is_misspelled = $bool;
         }
         return $this->is_misspelled;
+    }
+
+    public function has_symbol(bool $bool = null) {
+        if ($bool !== null) {
+            $this->has_symbol = $bool;
+        }
+        return $this->has_symbol;
     }
 
     public function get_max() {
@@ -304,7 +297,7 @@ class Dictionary {
 
     // All dictionaries must be created before they are retrieved.
     public function add_section(Section $section) {
-        $first_letter = $section->get_letter();
+        $first_letter = $section->get_char();
         $this->dictionary[$first_letter] = $section;
     }
 
@@ -315,24 +308,42 @@ class Dictionary {
     public function has_section($first_letter) {
         return isset($this->dictionary[$first_letter]);
     }
+
+    public function get_section_from_char(string $char) {
+        // Check to see if this character is a letter.
+        $letter_regex = "/[A-z]/";
+        $is_letter = preg_match($letter_regex, $char);
+        if ($is_letter) {
+            return $char;
+        }
+        else {
+            // Check to see if this character is a number.
+            $number_regex = "/[0-9]/";
+            $is_number = preg_match($number_regex, $char);
+            if ($is_number) {
+                return "digit";
+            }
+            return false; // This keyword does not start with a letter nor a number. Return false to signal that this section cannot exist.
+        }
+    }
 }
 
 // This Section (of a Dictionary) is a collection of the website's keywords.
 // The purpose of this over a traditional dictionary is better suggestions.
 class Section {
     public $section;
-    public $letter; // Letter which all words begin with.
+    public $char; // Character which all words begin with.
 
     public function __construct() {
         $this->section = null;
-        $this->letter = null;
+        $this->char = null;
     }
 
     // All dictionaries must be created before they are retrieved.
-    public function create_section($pdo, $site_id, $letter) {
+    public function create_section($pdo, $site_id, $char) {
         try {
-            $this->letter = $letter;
-            $sql = 'SELECT DISTINCT keyword FROM keywords_' . $letter . ' WHERE site_id = ? ORDER BY keyword ASC;';
+            $this->char = $char;
+            $sql = 'SELECT DISTINCT keyword FROM keywords_' . $char . ' WHERE site_id = ? ORDER BY keyword ASC;';
             $statement = $pdo->prepare($sql);
             $statement->execute([$site_id]);
             $this->section = $statement->fetchAll();
@@ -346,8 +357,8 @@ class Section {
         }
     }
 
-    public function get_letter() {
-        return $this->letter;
+    public function get_char() {
+        return $this->char;
     }
 
     public function word_at($index) {
@@ -361,7 +372,7 @@ class Section {
     // Input: key is the word we're searching for
     // Output: Array containing a flag stating if an exact match was found, and the index of the match.
     // Perform a binary search for a given term based on a word.
-    public function search($key) {
+    public function search(string $key) {
         //$arr = parent::get_section();
         $l = 0;
         $h = $this->length();
@@ -412,29 +423,13 @@ class Section {
 // INITIALIZATION //
 ///////////////////
 
-// Get data from the POST sent from the fetch API
-$raw = trim(file_get_contents('php://input'));
-$url = format_url(json_decode($raw)->url); // Format the url which was recieved so that it does not end in '/'
-//$urlNoPath = $url;
-$phrase = trim(json_decode($raw)->phrase); // User's input into the search bar. This phrase will get replaced after spellchecking is complete.
-$page_to_return = json_decode($raw)->page - 1; // This value will be used as an array index, so we subtract 1.
-$site_id = NULL;
-
-// Remove unnecessary characters and seperate phrase into seperate terms
-$phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]);
-$terms = explode(' ', $phrase);
-$original_keywords = [];
-foreach ($terms as $index => $term) {
-    $original_keywords[$index] = new Keyword($term, $index);
-}
-$phrase = new Phrase($original_keywords);
-
 // Use this array as a basic response object. May need something more in depth in the future.
 // Prepares a response to identify errors and successes.
 $response = [
     'dbError' => NULL,
-    'page' => $page_to_return + 1,
+    'page' => NULL, //$page_to_return + 1,
     'pdoError' => NULL,
+    'phpError' => NULL,
     'phrase' => NULL,
     'predictions' => NULL,
     'results' => NULL,
@@ -442,8 +437,39 @@ $response = [
     'timeTaken' => NULL,
     'totalPages' => NULL,
     'totalResults' => NULL,
-    'url' => $url
+    'url' => NULL //$url
 ];
+
+$save_search = true;
+$url = null;
+$phrase = null;
+$page_to_return = null;
+$site_id = null;
+$filter_symbols = null;
+
+if (isset($_GET) && !empty($_GET)) {
+    $filter_symbols = filter_var(trim($_GET['filter_symbols']), FILTER_VALIDATE_BOOLEAN);
+    // Trim and filter/sanitize the $_GET string data before formatting.
+    if ($filter_symbols) {
+        $phrase = sanitize( trim($_GET['phrase']), ['symbols' => false, 'lower' => false, 'upper' => false] );
+    }
+    else {
+        // Filter out symbols if search is not forced.
+        $phrase = sanitize( trim($_GET['phrase']), ['symbols' => true, 'lower' => false, 'upper' => false] );
+    }
+    $url = filter_var( trim($_GET['url']), FILTER_SANITIZE_URL );
+    $page_to_return = filter_var( trim($_GET['page']), FILTER_SANITIZE_NUMBER_INT );
+
+    //array_filter($_GET, 'trim_value'); // the data in $_GET is trimmed
+    $phrase = str_to_phrase($phrase); // Turn the string into a Phrase object
+    $url = format_url($url); // Format the url which was recieved so that it does not end in '/'
+    $page_to_return = $page_to_return - 1; // This value will be used as an array index, so we subtract 1.
+    
+    $response['filtered_symbols'] = $filter_symbols;
+    $response['phrase'] = $phrase;
+    $response['url'] = $url;
+    $response['page'] = $page_to_return + 1;
+}
 
 /////////////////////////////////
 // PREPARE TO SEARCH DATABASE //
@@ -457,15 +483,21 @@ $pdo = create_pdo($credentials);
 /////////////////////////////
 // DATABASE COMMUNICATION //
 ///////////////////////////
-
 try {
     if (!isset($pdo)) {
         throw new Exception("PDO instance is not defined.");
     }
-    if (is_string($pdo)) {
+    else if (is_string($pdo)) {
         // Return PDO error
         $response['pdoError'] = $pdo;
         throw new Exception("PDO error.");
+    }
+    else if (!isset($_GET) || empty($_GET)) {
+        $response['phpError'] = $pdo;
+        throw new Exception("Request method used to call search.php is not a GET request.");
+    }
+    else if ($phrase->length() <= 0) {
+        throw new Exception("No keywords to search for. This may be caused by a blank search or due to serverside input sanitization removing symbols.");
     }
 
     // Grab relevant site_id from recent call
@@ -488,11 +520,11 @@ try {
 
     // Spell check each Keyword within the Phrase
     foreach ($phrase->get_all_keywords() as $keyword) {
-        $first_letter = $keyword->get_text()[0];
-        if (!$dictionary->has_section($first_letter)) {
+        $section_char = $dictionary->get_section_from_char($keyword->get_text()[0]);
+        if (!$dictionary->has_section($section_char)) {
             // Add a new section to the dictionary
             $section = new Section();
-            $section->create_section($pdo, $site_id, $first_letter);
+            $section->create_section($pdo, $site_id, $section_char);
             $dictionary->add_section($section);
         }
         spell_check_keyword($keyword, $dictionary);
@@ -512,11 +544,35 @@ try {
     $response['phrase'] = $phrase;
     $phrase->set_text($phrase->to_string()); // temporary fix for the Phrase objects to_string() issue.
 
-    $keyword_results = fetch_keyword_dupes($phrase->get_all_keywords(), $pdo, $site_id); //fetch_keyword_results($predictions, $pdo, $site_id);
-    //$response['keyword_results'] = $keyword_results;
+    // In order to give keywords containing symbols a chance, we will search the paragraphs to see if they contain the keyword as a substring
+    $keyword_results_with_symbols = [];
+    $keyword_results = [];
+    if ($filter_symbols) {
+        $keywords_with_symbols = [];
+        $keywords_without_symbols = [];
+        foreach ($phrase->get_all_keywords() as $keyword) {
+            if ($keyword->has_symbol()) {
+                $keywords_with_symbols[] = $keyword;
+            }
+            else {
+                $keywords_without_symbols[] = $keyword;
+            }
+        }
+        if (count($keywords_with_symbols) > 0) {
+            $keyword_results_with_symbols = fetch_keyword_dupes_from_paragraphs($keywords_with_symbols, $pdo, $site_id);
+        }
+        if (count($keywords_without_symbols) > 0) {
+            $keyword_results = fetch_keyword_dupes($keywords_without_symbols, $pdo, $site_id);
+        }
+        $keyword_results = array_merge($keyword_results, $keyword_results_with_symbols);
+    }
+    else {
+        $keyword_results = fetch_keyword_dupes($phrase->get_all_keywords(), $pdo, $site_id);
+    }
+    $response['keyword_results'] = $keyword_results;
 
     $phrase_results = fetch_phrase_dupes($phrase, $pdo, $site_id);
-    //$response['phrase_results'] = $phrase_results;
+    $response['phrase_results'] = $phrase_results;
 
     // Create all results
     $search_results = [];
@@ -531,25 +587,25 @@ try {
         $snippet = generate_snippet($phrase, $matched_paragraph);
         $search_results[$matched_paragraph['page_id']]->add_snippet($snippet, true);
     }
-    
+
     $page_ids = array_keys($score_keeper->get_all_scores());
-    $paths_and_metadata = fetch_all_paths_and_metadata($page_ids, $pdo);
-    //$response['paths_and_metadata'] = $paths_and_metadata;
+    if (!empty($page_ids)) {
+        $paths_and_metadata = fetch_all_paths_and_metadata($page_ids, $pdo);
 
-    // Create a Result object for each search result found
-    foreach ($paths_and_metadata as $page) {
-        // Ensure that this result contains a snippet.
-        $snippets = $search_results[$page['page_id']]->get_all_snippets();
-        if (empty($snippets) || $snippet === NULL) {
-            // If no snippet was made already, just use the page description as the snippet.
-            $search_results[$page['page_id']]->add_snippet($page['description'], false);
+        // Create a Result object for each search result found
+        foreach ($paths_and_metadata as $page) {
+            // Ensure that this result contains a snippet.
+            $snippets = $search_results[$page['page_id']]->get_all_snippets();
+            if (empty($snippets) || $snippet === NULL) {
+                // If no snippet was made already, just use the page description as the snippet.
+                $search_results[$page['page_id']]->add_snippet($page['description'], false);
+            }
+            $urlNoPath = format_url($url, false);
+            $search_results[$page['page_id']]->set_url($urlNoPath . $page['path']);
+            $search_results[$page['page_id']]->set_title($page['title']);
+            $search_results[$page['page_id']]->set_relevance($score_keeper->get_score($page['page_id']));
         }
-        $urlNoPath = format_url($url, false);
-        $search_results[$page['page_id']]->set_url($urlNoPath . $page['path']);
-        $search_results[$page['page_id']]->set_title($page['title']);
-        $search_results[$page['page_id']]->set_relevance($score_keeper->get_score($page['page_id']));
     }
-
     // Sort the pages by their relevance score
     usort($search_results, 'resultSort');
 
@@ -557,16 +613,19 @@ try {
     $response['totalResults'] = count($search_results);
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
-    $response['results'] = $result_pages[$page_to_return];
+    if (isset($result_pages[$page_to_return])) {
+        $response['results'] = $result_pages[$page_to_return];
+    }
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
     // Print out the error message.
     $response['dbError'] = $e->getMessage();
+    $save_search = false;
 }
 
 // Store the search that was made by the user
-if ($page_to_return === 0) { // Only store searches that land on the first page.
+if ($save_search && $page_to_return === 0) { // Only store searches that land on the first page.
     try {
         $pdo->beginTransaction();
         $sql = 'INSERT INTO searches (site_id, search_phrase) VALUES (?, ?)';
@@ -706,7 +765,7 @@ function keyword_distance_cmp($a, $b) {
 //        (optional) Boolean that determines whether to end the url with a '/'
 // Output: URL with or without a path.
 // Ensures a given URL has (or doesnt have) a path.
-function format_url($raw_url, $include_path = true) {
+function format_url(string $raw_url, bool $include_path = true) {
     $urlNoPath = $raw_url;
     $url = $raw_url;
     // Format the url which was recieved so that it does not end in '/'
@@ -754,19 +813,18 @@ function create_pdo($credentials) {
 
 function spell_check_keyword(Keyword $keyword, Dictionary $dictionary) {
     // Ensure the keyword is actually a keyword and is not a number.
-    $first_letter = $keyword->get_text()[0];
-    $number_regex = "/[0-9]/";
-    $is_number = preg_match($number_regex, $first_letter);
-    if ($is_number) {
+    $first_char = $keyword->get_text()[0];
+    $section_char = $dictionary->get_section_from_char($first_char);
+    if ($section_char === false || $section_char === "digit") {
         return;
     }
 
     $section = null;
-    if ($dictionary->has_section($first_letter)) {
-        $section = $dictionary->get_section($first_letter);
+    if ($dictionary->has_section($section_char)) {
+        $section = $dictionary->get_section($section_char);
     }
     else {
-        throw new Exception("This Dictionary does not have a Section '" . $first_letter ."'.");
+        throw new Exception("This Dictionary does not have a Section '" . $section_char ."'.");
     }
 
     $is_english = $section->search($keyword->get_text());
@@ -793,12 +851,14 @@ function keyword_predictions(Keyword $keyword, Dictionary $dictionary) {
     // Verify that the Dictionary contains the necessary Section. 
     $first_letter = $keyword->get_text()[0];
     $section = null;
-    if ($dictionary->has_section($first_letter)) {
-        $section = $dictionary->get_section($first_letter);
+    $section_char = $dictionary->get_section_from_char($first_letter);
+    if ($dictionary->has_section($section_char)) {
+        $section = $dictionary->get_section($section_char);
     }
     else {
-        throw new Exception("This Dictionary does not have a Section '" . $first_letter ."'.");
+        throw new Exception("This Dictionary does not have a Section '" . $section_char ."'.");
     }
+
     // Add predictions to the array.
     return $section->similar_to($keyword);
 }
@@ -894,6 +954,29 @@ function create_suggestions_from_predictions(Phrase $phrase, array $predictions)
     return $suggestions;
 }
 
+// Intended for when searching through the paragraphs is the only option. (basically, a forced search is performed)
+function fetch_keyword_dupes_from_paragraphs(array $keywords, PDO $pdo, int $site_id) {
+    // Build the SQL query
+    $sql = 'SELECT * FROM (';
+    foreach ($keywords as $keyword) {
+        $sql .= 'SELECT `site_id`, `page_id`, ? AS keyword, ROUND ((LENGTH(paragraph) - LENGTH(REPLACE(paragraph, ?, ""))) / LENGTH(?)) AS dupe_total FROM paragraphs WHERE site_id = ? UNION ALL';
+    }
+    $sql = substr($sql, 0, -9); // Remove the extra UNION ALL from the end.
+    $sql .= ') AS data WHERE dupe_total > 0 ORDER BY dupe_total DESC;';
+    // Obtain results based on the whole phrase
+    //$sql = 'SELECT * FROM (SELECT `site_id`, `page_id`, `?` AS keyword, ROUND ((LENGTH(paragraph) - LENGTH(REPLACE(paragraph, `?`, ""))) / LENGTH(`?`)) AS dupe_total FROM paragraphs WHERE site_id = ?) AS data WHERE dupe_total > 0 ORDER BY dupe_total DESC;';
+    $statement = $pdo->prepare($sql);
+    for ($i = 0, $j = 1, $keyword_count = count($keywords); $i < $keyword_count; $i++) {
+        $statement->bindValue($j, $keyword->get_text(), PDO::PARAM_STR);
+        $statement->bindValue($j+1, $keyword->get_text(), PDO::PARAM_STR);
+        $statement->bindValue($j+2, $keyword->get_text(), PDO::PARAM_STR);
+        $statement->bindValue($j+3, $site_id, PDO::PARAM_INT);
+        $j += 4;
+    }
+    $statement->execute();
+    return $statement->fetchAll();
+}
+
 function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     $keyword_strings = []; // Used to hold Prediction and Keyword text
 
@@ -935,6 +1018,11 @@ function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     natcasesort($keyword_strings);
     $keyword_strings = array_values($keyword_strings); // Re-index the keys so that the entires of $keyword_strings array are ordered as expected.
 
+    // If totals is empty, then we have nothing to search!
+    if (empty($totals)) {
+        return [];
+    }
+
     // Generate the SQL string
     $sql = '';
     foreach ($totals as $first_letter => $total) {
@@ -956,7 +1044,7 @@ function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
     // Prepare and return the PDO statement
     $statement = $pdo->prepare($sql);
     $sum = 1; // Used for binding values to the correct indices.
-    $index = 0; // Used for 
+    $index = 0; // Used for tracking which keyword we are on. 
     foreach ($totals as $total) {
         $statement->bindValue($sum, $site_id, PDO::PARAM_INT);
         $sum++;
@@ -975,6 +1063,11 @@ function fetch_keyword_dupes(array $keywords, PDO $pdo, int $site_id) {
 }
 
 function fetch_phrase_dupes(Phrase $phrase, PDO $pdo, int $site_id) {
+    // If there are not enough keywords, then return a blank array.
+    if ($phrase->length() < 2) {
+        return [];
+    }
+
     // Obtain results based on the whole phrase
     $sql = 'SELECT header_id, page_id, paragraph FROM paragraphs WHERE site_id = ? AND INSTR(paragraph, ?)';
     $statement = $pdo->prepare($sql);
@@ -989,20 +1082,20 @@ function get_relevance(int $dupe_total, int $max) {
 // Relies on the keyword_results being ordered by the dupe_total in descending order.
 function rank_results($keyword_results, $phrase_results) {
     // Obtain all relevance scores and populate array of Results
-    $search_results = []; // Contains all Results objects.
+    //$search_results = []; // Contains all Results objects.
     $maxes = []; // Holds each keywords highest dupe totals.
     $score_keeper = new ScoreKeeper();
 
     if ($keyword_results !== NULL) {
         // Add to score based on individual keywords
         foreach ($keyword_results as $result) {
-            $page_id = $result['page_id'];
-            $search_results[$page_id] = new Result($page_id);
+            //$page_id = $result['page_id'];
+            //$search_results[$page_id] = new Result($page_id);
             if (!isset($maxes[$result['keyword']])) {
                 $maxes[$result['keyword']] = $result['dupe_total'];
             }
             $score = get_relevance($result['dupe_total'], $maxes[$result['keyword']]);
-            $score_keeper->add_to_score($score, $page_id);
+            $score_keeper->add_to_score($score, $result['page_id']);
             /*foreach ($phrase->get_all_keywords() as $original_keyword) {
                 $keywords_match = $result['keyword'] === $original_keyword->get_text();
                 $has_max = $original_keyword->get_max() !== null;
@@ -1136,4 +1229,18 @@ function fetch_all_paths_and_metadata(array $page_ids, PDO $pdo) {
     }
     $statement->execute();
     return $statement->fetchAll();
+}
+
+function str_to_phrase(string $str) {
+    $terms = explode(' ', $str);
+    $keywords = [];
+    foreach ($terms as $index => $term) {
+        if ($term !== "") {
+            $symbol_regex = "/[^A-Za-z0-9]/";
+            $has_symbol = preg_match($symbol_regex, $term[0]) === 1;
+            $keywords[$index] = new Keyword($term, $index);
+            $keywords[$index]->has_symbol($has_symbol);
+        }
+    }
+    return new Phrase($keywords);
 }

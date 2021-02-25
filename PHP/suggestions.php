@@ -12,6 +12,191 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 //ini_set('display_errors', 0);
 
+////////////////////////
+// CLASS DEFINITIONS //
+//////////////////////
+
+// A Suggestion is an alternate Phrase
+class Suggestion {
+    public $original; // Phrase Object
+    public $suggestion; // Phrase Object
+    public $distance; // Total distance between the two Phrase objects.
+    
+    public function __construct(Phrase $original, Phrase $suggestion) {
+        $this->original = $original;
+        $this->suggestion = $suggestion;
+
+        // Calculate the total distance between the two Phrases.
+        $total = 0;
+        for ($i = 0; $i < $original->length(); $i++) {
+            $total += levenshtein($original->get_keyword($i)->get_text(), $suggestion->get_keyword($i)->get_text());
+        }
+        $this->distance = $total;
+    }
+
+    public function get_original_phrase() {
+        return $this->original;
+        //$phrase = "";
+        //foreach ($this->keywords as $keyword) {
+        //    $phrase .= $keyword . " ";
+        //}
+        //return substr($phrase, 0, -1); // Remove the space at the end.*/
+    }
+    public function get_suggested_phrase() {
+        return $this->suggestion;
+    }
+    public function set_suggested_phrase(Phrase $suggestion) {
+        $this->suggestion = $suggestion;
+    }
+    public function get_total_distance() {
+        return $this->distance;
+    }
+}
+
+class Phrase {
+    public $keywords; // Array of Keyword objects
+    public $text;
+    
+    public function __construct(array $keywords) {
+        $this->keywords = $keywords;
+        $this->text = $this->to_string(); // For some reason, this does not work. Use set_text as a temporary solution.
+    }
+
+    public function to_string() {
+        $phrase = "";
+        foreach ($this->keywords as $keyword) {
+            $phrase .= $keyword->get_text() . " ";
+        }
+        return substr($phrase, 0, -1); // Remove the space at the end.
+    }
+    public function set_phrase(array $keywords) {
+        $this->keywords = $keywords;
+        $this->text = $this->to_string(); // For some reason, this does not work. Use set_text as a temporary solution.
+    }
+
+    function set_text($text) {
+        $this->text = $text;
+    }
+
+    public function get_keyword(int $index) {
+        return $this->keywords[$index];
+    }
+    public function get_all_keywords() {
+        return $this->keywords;
+    }
+    public function set_keyword($keyword, $index) {
+        $this->keywords[$index] = $keyword;
+    }
+
+    public function length() {
+        return count($this->keywords);
+    }
+
+    public function has_misspelling() {
+        foreach ($this->keywords as $keyword) {
+            if ($keyword->is_misspelled()) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+// A Prediction is an alternate to Keyword
+class Prediction {
+    public $original; // Keyword object
+    public $prediction; // Keyword object
+    public $distance;
+    public $index;
+
+    public function __construct(Keyword $original, Keyword $prediction) {
+        $this->original = $original; // Keyword object
+        $this->prediction = $prediction;
+        $this->index = $original->get_index();
+        $this->distance = levenshtein($original->get_text(), $prediction->get_text());
+    }
+
+    public function get_original() {
+        return $this->original;
+    }
+
+    public function get_prediction() {
+        return $this->prediction;
+    }
+
+    public function get_index() {
+        return $this->index;
+    }
+
+    public function get_distance() {
+        return $this->distance;
+    }
+}
+
+class Keyword {
+    //public $original; // Original term that this keyword references.
+    //protected $pages_found;
+    public $text;
+    public $index; // Index of the term which this keyword references.
+    public $is_misspelled; // Flag for whether the original keyword is misspelled.
+    public $has_symbol;
+    //public $has_suggestion;
+    //public $suggestion_distance; // Levenshtein distance between the original term and the suggested term.
+    protected $max; // Maximum dupe_totals of this keyword in the database.
+
+    public function __construct(string $text, int $index) {
+        $this->text = $text;
+        $this->index = $index;
+        $this->max = NULL;
+        $this->is_misspelled = false;
+    }
+
+    public function get_index() {
+        return $this->index;
+    }
+
+    public function get_text() {
+        return $this->text;
+    }
+
+    public function set_text(string $new_keyword) {
+        $this->text = $new_keyword;
+    }
+
+    public function is_misspelled(bool $bool = null) {
+        if ($bool !== null) {
+            $this->is_misspelled = $bool;
+        }
+        return $this->is_misspelled;
+    }
+
+    public function has_symbol(bool $bool = null) {
+        if ($bool !== null) {
+            $this->has_symbol = $bool;
+        }
+        return $this->has_symbol;
+    }
+
+    public function get_max() {
+        return $this->max;
+    }
+
+    public function set_max(int $new_max) {
+        $this->max = $new_max;
+    }
+
+    // If the max is set, output a relevance score.
+    // If the max is not set, output 0;
+    public function relevance(int $dupe_total) {
+        if (isset($this->max)) {
+            return ceil(($dupe_total / $this->max) * 100);
+        }
+        else {
+            return 0;
+        }
+    }
+}
+
 /////////////////////
 // INITIALIZATION //
 ///////////////////
@@ -20,6 +205,7 @@ $raw = trim(file_get_contents('php://input'));
 $url = format_url(json_decode($raw)->url);
 $phrase = trim(json_decode($raw)->phrase); // User's input into the search bar. This phrase will get replaced after spellchecking is complete.
 $phrase = sanitize($phrase, ['symbols' => true, 'lower' => false, 'upper' => false]); // Remove unnecessary characters.
+$phrase = str_to_phrase($phrase);
 $limit = json_decode($raw)->limit;
 $site_id = NULL;
 
@@ -69,7 +255,7 @@ try {
     }
 
     // Find all previous searches that contain the currently typed phrase
-    $sql = "SELECT search_phrase,COUNT(search_phrase) AS times_searched FROM searches WHERE site_id = ? AND INSTR(search_phrase, ?)>0 AND INSTR(search_phrase, ?)<=" . strlen($phrase) . " GROUP BY search_phrase ORDER BY times_searched DESC";
+    /*$sql = "SELECT search_phrase,COUNT(search_phrase) AS times_searched FROM searches WHERE site_id = ? AND INSTR(search_phrase, ?)>0 AND INSTR(search_phrase, ?)<=" . strlen($phrase) . " GROUP BY search_phrase ORDER BY times_searched DESC";
     $statement = $pdo->prepare($sql);
     $statement->execute([$site_id, $phrase, $phrase]);
     $suggestions = $statement->fetchAll();
@@ -77,8 +263,8 @@ try {
     
     for ($i = 0; $i < count($suggestions); $i++) {
         $suggestions[$i] = $suggestions[$i]['search_phrase'];
-    }
-    $response['suggestions'] = $suggestions;
+    }*/
+    $response['suggestions'] = create_suggestions_from_history($phrase, $pdo, $site_id, $limit);
 } 
 catch (Exception $e) {
     // One of our database queries have failed.
@@ -167,5 +353,36 @@ function create_pdo($credentials) {
         $error = $e->getMessage();
         return $error;
     }
+}
+
+function str_to_phrase(string $str) {
+    $tokens = explode(' ', $str);
+    $keywords = [];
+    foreach ($tokens as $index => $token) {
+        $keywords[$index] = new Keyword($token, $index);
+    }
+    return new Phrase($keywords);
+}
+
+function create_suggestions_from_history(Phrase $phrase, PDO $pdo, int $site_id, int $limit = 10) {
+    $suggestions = [];
+    // Find all previous searches that contain the currently typed phrase
+    $sql = "SELECT search_phrase,COUNT(search_phrase) AS times_searched FROM searches WHERE site_id = ? AND INSTR(search_phrase, ?)>0 AND INSTR(search_phrase, ?)<=" . strlen($phrase->to_string()) . " GROUP BY search_phrase ORDER BY times_searched DESC";
+    $statement = $pdo->prepare($sql);
+    $statement->execute([$site_id, $phrase->to_string(), $phrase->to_string()]);
+    $suggestions = $statement->fetchAll();
+    $suggestions = array_slice($suggestions, 0, $limit); // Ensure that we have at most $limit suggestions
+    
+    foreach ($suggestions as $i => $suggestion) {
+        // String to Phrase conversion
+        $terms = explode(' ', $suggestion['search_phrase']);
+        $keywords = [];
+        foreach ($terms as $j => $term) {
+            $keywords[] = new Keyword($term, $j);
+        }
+        $new_phrase = new Phrase($keywords);
+        $suggestions[$i] = new Suggestion($phrase, $new_phrase);
+    }
+    return $suggestions;
 }
 ?>

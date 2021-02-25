@@ -1,56 +1,3 @@
-// Input: Data from backend
-// Output: Array of suggestions (Strings)
-/*const populateSuggestions = (suggestions, url) => {
-    //const otherSuggestions = document.getElementById("otherSuggestions");
-    let container = document.createElement("div");
-    //otherSuggestions.innerHTML = "";
-    suggestions.forEach(item => {
-      let text = item.suggestion.text;
-      let badge = createSuggestionBadge(text, url);
-      otherSuggestions.append(badge);
-    });
-} // Bad*/
-  
-/*const createSuggestionBadge = (suggestion, url) => {
-    const results = document.getElementById("results");
-    const pageBar = document.getElementById("pageBar");
-    const searchBar = document.getElementById("searchBar");
-    const phraseElem = document.getElementById("phrase");
-
-    let badge = document.createElement("span"); 
-    badge.className = "badge suggestion m5";
-    badge.innerText = suggestion;
-    // When the badge gets clicked, perform a search using the suggestion.
-    badge.addEventListener("click", (e) => {
-      console.log(e);
-      searchBar.value = suggestion;
-      search(suggestion, url)
-      .then(data => {
-        console.log(data);
-        results.innerHTML = ""; // Clear out the old results to make room for the new.
-        pageBar.innerHTML = "";
-        phraseElem.innerHTML = data.phrase.text;
-        populateSuggestions(data.suggestions, data.url);
-  
-        if (data.results?.length > 0) {
-          // Populate the results container with results.
-          populate(data, results);
-          pageBar.appendChild(createPageButtons(data));
-          setCurrentPage(data.page);
-          setTotalPages(data.totalPages);
-        }
-        else {
-          setCurrentPage(0);
-          setTotalPages(0);
-        }
-      })
-      .catch(err => {
-        console.log("ERROR: ", err);
-      });
-    });
-    return badge;
-} // Bad*/
-  
 // Input: Object holding result metadata.
 // Output: Result element.
 // Creates a result element.
@@ -123,47 +70,6 @@ const boldKeywords = (str, phrase) => {
     return bolded;
 } // Good
   
-// Input: searchData (what was obtained from the backend)
-// Output: The contents of the pageBar element
-// Create the page buttons to sift through results.
-/*const createPageButtons = (searchData) => {
-    // This is needed for creating the page turn event listeners
-    //const resultsElem = document.getElementById("results");
-    //const searchPhrase = document.getElementById("searchBar").value;
-  
-    //let totalPages = Math.ceil(searchData.totalResults / 10);
-    let pageButtons = document.createElement("span");
-  
-    // Create each page button.
-    for (let i = 0; i < searchData.totalPages; i++) {
-        let pageButton = document.createElement("button");
-        pageButton.className="pageButton";
-        pageButton.innerHTML = i+1;
-        pageButton.setAttribute("page", i+1);
-
-        // Page turn listener
-        pageButton.addEventListener("click", (e) => {
-            let page = e.target.attributes[1].value;
-            search(searchData.phrase.text, searchData.url, page)
-            .then(data => {
-                console.log(data);
-                resultsElem.innerHTML = populate(data); // Populate the results container with results. Clear out the old results to make room for the new.
-                //populate(data); // Populate the results container with results.
-                setCurrentPage(data.page);
-                setTotalPages(data.totalPages);
-            })
-            .catch(err => {
-                console.log("ERROR: ", err);
-            });
-        });
-
-        pageButtons.appendChild(pageButton);
-    }
-  
-    pageButtons.className = "pageButtons";
-    return pageButtons;
-} // Bad*/
-  
 // Input: res is what was obtained from the backend.
 //        container is the results container
 // Output: None.
@@ -211,66 +117,6 @@ const populateResults = (data, container) => {
     });
 } // Good
   
-// Input: page is the page which the user should currently be on.
-// Output: None.
-// Set the current page value within the pageMonitor.
-/*const setCurrentPage = (page) => {
-    const currentPageElem = document.getElementById("currentPage");
-    currentPageElem.innerHTML = page;
-} // Bad
-  
-// Input: totalPages is the count of all pages.
-// Output: None.
-// Set the total page value within the pageMonitor.
-const setTotalPages = (totalPages) => {
-    const totalPagesElem = document.getElementById("totalPages");
-    totalPagesElem.innerHTML = totalPages;
-} // Bad
-  
-// Input: (Array) Suggestions array retrieved from suggestions.php
-// Output: None.
-// Populate the suggestions dropdown with suggestions from the backend.
-const populateDropdown = (suggestions, url) => {
-    const searchBar = document.getElementById("searchBar");
-    const suggestionsElem = document.getElementById("suggestions");
-    const phraseElem = document.getElementById("phrase");
-    const list = document.getElementById("preSearchSuggestions");
-    list.innerHTML = ""; // Clear old suggestions.
-  
-    suggestions.forEach(suggestion => {
-      let item = document.createElement("li");
-      item.innerText = suggestion;
-      item.addEventListener("click", (e) => {
-        searchBar.value = suggestion;
-        search(suggestion, url)
-        .then(data => {
-          console.log(data);
-          suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
-          results.innerHTML = ""; // Clear out the old results to make room for the new.
-          pageBar.innerHTML = "";
-          phraseElem.innerHTML = data.phrase.text;
-          populateSuggestions(data.suggestions, data.url);
-  
-          if (data.results?.length > 0) {
-            // Populate the results container with results.
-            populate(data, results);
-            pageBar.appendChild(createPageButtons(data));
-            setCurrentPage(data.page);
-            setTotalPages(data.totalPages);
-          }
-          else {
-            setCurrentPage(0);
-            setTotalPages(0);
-          }
-        })
-        .catch(err => {
-          console.log("ERROR: ", err);
-        });
-      })
-      list.append(item);
-    });
-} // Bad*/
-  
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
 //        data = { sitemap: "https://www.superiorcleaning.solutions/sitemap.xml" }
@@ -306,10 +152,10 @@ async function crawl(urlToCrawl) {
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
 async function search(phrase, baseUrl, page = 1) {
-    let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+    let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page;
     // Default options are marked with *
     const response = await fetch(phpUrl, {
-      method: 'POST', // *GET, POST, PUT, DELETE, etc.
+      method: 'GET', // *GET, POST, PUT, DELETE, etc.
       mode: 'cors', // no-cors, *cors, same-origin
       cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
       credentials: 'same-origin', // include, *same-origin, omit
@@ -319,11 +165,11 @@ async function search(phrase, baseUrl, page = 1) {
       },
       redirect: 'follow', // manual, *follow, error
       referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-      body: JSON.stringify({
+      /*body: JSON.stringify({
         url: baseUrl,
         phrase: phrase,
         page: page
-      }) // body data type must match "Content-Type" header
+      })*/ // body data type must match "Content-Type" header
     });
     //console.log(response.text());
     //return response.text();
