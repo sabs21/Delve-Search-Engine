@@ -1,7 +1,7 @@
 // Input: Object holding result metadata.
 // Output: Result element.
 // Creates a result element.
-const createResult = (data = {url: null, title: null, snippet: null}, classes = {result: "result", link: "link", title: "title", snippet: "snippet"}) => {
+const createResult = (data = {url: null, title: null, snippet: null}, classes = {result: "result", link: "link", url: "url", title: "title", snippet: "snippet"}) => {
     let result = document.createElement("div");
     let link = document.createElement("a");
     let url = document.createElement("h6");
@@ -22,7 +22,7 @@ const createResult = (data = {url: null, title: null, snippet: null}, classes = 
         shortenedUrl = shortenedUrl.substring(0, shortenedUrl.length-1);
     }
     url.innerHTML = shortenedUrl;
-    url.className = "resultUrl";
+    url.className = classes.url;
   
     // Format the rest of the result.
     result.className = classes.result === null ? "" : classes.result;
@@ -80,7 +80,7 @@ const populateResults = (data, container) => {
         let formattedSnippets = [];
         result.snippets.forEach((snippet, index) => {
             formattedSnippets[index] = {
-                text: boldSearchTerms(snippet.text, res.phrase.keywords),
+                text: boldKeywords(snippet.text, data.phrase),
                 fromPageContent: snippet.fromPageContent
             };
         });
@@ -107,13 +107,13 @@ const populateResults = (data, container) => {
         }*/
         //console.log("completeSnippet", completeSnippet);
 
-        let data = {
+        let metadata = {
             url: result.url, 
             title: result.title, 
             snippet: completeSnippet
         }
         //let resultElem = createResult(data);
-        container.appendChild(createResult(data));
+        container.appendChild(createResult(metadata));
     });
 } // Good
   
@@ -142,8 +142,8 @@ async function crawl(urlToCrawl) {
       }) // body data type must match "Content-Type" header
     });
     //console.log(response.text());
-    return response.text();
-    //return response.json();
+    //return response.text();
+    return response.json();
 } // Good
   
 // Input: Phrase is the search phrase that the user types.
@@ -151,30 +151,29 @@ async function crawl(urlToCrawl) {
 //        page tells the server what page to return. Each page has 10 results.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function search(phrase, baseUrl, page = 1) {
-    let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page;
-    // Default options are marked with *
-    const response = await fetch(phpUrl, {
-      method: 'GET', // *GET, POST, PUT, DELETE, etc.
-      mode: 'cors', // no-cors, *cors, same-origin
-      cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
-      credentials: 'same-origin', // include, *same-origin, omit
-      headers: {
-        'Content-Type': 'application/json'
-        // 'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      redirect: 'follow', // manual, *follow, error
-      referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-      /*body: JSON.stringify({
-        url: baseUrl,
-        phrase: phrase,
-        page: page
-      })*/ // body data type must match "Content-Type" header
-    });
-    //console.log(response.text());
-    //return response.text();
-    return response.json();
-} // Good
+async function search(phrase, baseUrl, options = {}) {
+  if (options.page === null) {
+    options.page = 1;
+  }
+  if (options.filterSymbols === null) {
+    options.filterSymbols = true;
+  }
+  //let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + options.page + "&filter_symbols=" + options.filterSymbols;
+  // Default options are marked with *
+  const response = await fetch(phpUrl, {
+    method: "GET", // *GET, POST, PUT, DELETE, etc.
+    mode: 'cors', // no-cors, *cors, same-origin
+    cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+    credentials: 'same-origin', // include, *same-origin, omit
+    //headers: {
+    //  'Content-Type': 'application/json'
+    //},
+    redirect: 'follow', // manual, *follow, error
+    referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+  });
+  return response.json();
+}
   
 // Input: (String) Phrase is the search phrase that the user has typed.
 //        (String) baseUrl identifies which site to get suggestions for.
@@ -182,26 +181,19 @@ async function search(phrase, baseUrl, page = 1) {
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
 async function fetchSuggestions(phrase, baseUrl, limit = 10) {
-    let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php";
+    let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php?url=" + baseUrl + "&phrase=" + phrase + "&limit=" + limit;
     // Default options are marked with *
     const response = await fetch(phpUrl, {
-      method: 'POST', // *GET, POST, PUT, DELETE, etc.
-      mode: 'cors', // no-cors, *cors, same-origin
-      cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
-      credentials: 'same-origin', // include, *same-origin, omit
-      headers: {
-        'Content-Type': 'application/json'
-        // 'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      redirect: 'follow', // manual, *follow, error
-      referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-      body: JSON.stringify({
-        url: baseUrl,
-        phrase: phrase,
-        limit: limit
-      }) // body data type must match "Content-Type" header
+        method: 'GET', // *GET, POST, PUT, DELETE, etc.
+        mode: 'cors', // no-cors, *cors, same-origin
+        cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+        credentials: 'same-origin', // include, *same-origin, omit
+        /*headers: {
+          'Content-Type': 'application/json'
+          // 'Content-Type': 'application/x-www-form-urlencoded',
+        },*/
+        redirect: 'follow', // manual, *follow, error
+        referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
     });
-    //console.log(response.text());
-    //return response.text();
     return response.json();
-} // Good
+}

@@ -65,17 +65,15 @@ window.addEventListener("DOMContentLoaded", function() {
   // let preSearchSuggestions = document.getElementById("preSearchSuggestions"); // Suggestions that appear before a search in the dropdown.
 
   searchBar.addEventListener("keyup", (e) => {
-    console.log(e);
     const searchDropdown = document.getElementById("searchDropdown");
     fetchSuggestions(searchBar.value, url, limit = 10)
     .then(data => {
-      console.log(data);
+      //console.log(data);
       populateDropdown(data.suggestions, data.url, (e) => {
         let suggestion = e.target.value;
         searchBar.value = e.target.value;
         search(suggestion, url)
         .then(data => {
-          console.log(data);
           suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
           results.innerHTML = ""; // Clear out the old results to make room for the new.
           pageBar.innerHTML = "";
@@ -177,7 +175,7 @@ const createSuggestionBadge = (suggestion, url) => {
 // Input: Object holding result metadata.
 // Output: Result element.
 // Creates a result element.
-const createResult = (data = {url: null, title: null, snippet: null}) => {
+/*const createResult = (data = {url: null, title: null, snippet: null}) => {
   let result = document.createElement("div");
   let link = document.createElement("a");
   let url = document.createElement("h6");
@@ -247,7 +245,7 @@ const boldSearchTerms = (str, terms) => {
     }
   });
   return bolded;
-}
+}*/
 
 // Input: searchData (what was obtained from the backend)
 // Output: The contents of the pageBar element
@@ -269,8 +267,11 @@ const createPageButtons = (searchData) => {
 
     // Page turn listener
     pageButton.addEventListener("click", (e) => {
-      let page = e.target.attributes[1].value;
-      search(searchData.phrase.text, searchData.url, page)
+      let options = {
+        page: e.target.attributes[1].value
+      };
+
+      search(searchData.phrase.text, searchData.url, options)
       .then(res => {
         console.log(res);
         resultsElem.innerHTML = ""; // Clear out the old results to make room for the new.
@@ -294,7 +295,7 @@ const createPageButtons = (searchData) => {
 //        container is the results container
 // Output: None.
 // Populate the results container with results.
-const populateResults = (res, container) => {
+/*const populateResults = (res, container) => {
   res.results.forEach(result => {
     // Format each snippet.
     let formattedSnippets = [];
@@ -312,21 +313,7 @@ const populateResults = (res, container) => {
     if (formattedSnippets[0] !== null) {
       completeSnippet = formattedSnippets[0].text;
     }
-    /*if (result.snippets[0]?.fromPageContent) {
-      // If the first part of the snippet is in the middle of the page's content, add ellipses at the beginning of the snippet.
-      completeSnippet = '... ';
-    }*/
-    /*formattedSnippets.forEach(snippet => {
-      // Ensure that the snippet doesn't get too long (longer than 350 chars).
-      let newLength = completeSnippet.length + snippet.text.length;
-      if (newLength < 350) {
-        completeSnippet += snippet.text;
-      }
-    })*/
-
-    /*if (completeSnippet !== '') {
-      completeSnippet = completeSnippet.substring(0, completeSnippet.length - 6); // Remove the ending ' ... '
-    }*/
+    
     //console.log("completeSnippet", completeSnippet);
 
     let data = {
@@ -337,7 +324,7 @@ const populateResults = (res, container) => {
     //let resultElem = createResult(data);
     container.appendChild(createResult(data));
   });
-}
+}*/
 
 // Input: page is the page which the user should currently be on.
 // Output: None.
@@ -380,7 +367,7 @@ const populateDropdown = (suggestions, url, onClick = null) => {
 //        data = { sitemap: "https://www.superiorcleaning.solutions/sitemap.xml" }
 // Output: Response in json format
 // Send the sitemap url to the php script that will fill the database accordingly
-async function crawl(urlToCrawl) {
+/*async function crawl(urlToCrawl) {
   let phpUrl = "http://localhost/dudaSearch/PHP/crawl.php";
   let sitemapUrl = urlToCrawl + "/sitemap.xml";
   // Default options are marked with *
@@ -400,16 +387,16 @@ async function crawl(urlToCrawl) {
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());
-  return response.text();
-  //return response.json();
-}
+  //return response.text();
+  return response.json();
+}*/
 
 // Input: Phrase is the search phrase that the user types.
 //        baseUrl is used to generate the sitemap url and identify which site to search.
 //        page tells the server what page to return. Each page has 10 results.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function search_old(phrase, baseUrl, method, page = 1) {
+/*async function search_old(phrase, baseUrl, method, page = 1) {
   //let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
   let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page;
   let body = null;
@@ -438,16 +425,22 @@ async function search_old(phrase, baseUrl, method, page = 1) {
   //console.log(response.text());
   //return response.text();
   return response.json();
-}
+}*/
 
 // Input: Phrase is the search phrase that the user types.
 //        baseUrl is used to generate the sitemap url and identify which site to search.
 //        page tells the server what page to return. Each page has 10 results.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function search(phrase, baseUrl, page = 1) {
-  //let phpUrl = "http://localhost/dudaSearch/PHP/search.php";
-  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + page + "&forced_search=" + true;
+/*async function search(phrase, baseUrl, options = {}) {
+  if (options.page === undefined || options.page === null) {
+    options.page = 1;
+  }
+  if (options.filterSymbols === undefined || options.filterSymbols === null) {
+    options.filterSymbols = true;
+  }
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + options.page + "&filter_symbols=" + options.filterSymbols;
+
   // Default options are marked with *
   const response = await fetch(phpUrl, {
     method: "GET", // *GET, POST, PUT, DELETE, etc.
@@ -461,34 +454,23 @@ async function search(phrase, baseUrl, page = 1) {
     referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
   });
   return response.json();
-}
+}*/
 
 // Input: (String) Phrase is the search phrase that the user has typed.
 //        (String) baseUrl identifies which site to get suggestions for.
 //        (Integer) limit tells the server the maximum amount of suggestions to return.
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
-async function fetchSuggestions(phrase, baseUrl, limit = 10) {
-  let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php";
+/*async function fetchSuggestions(phrase, baseUrl, limit = 10) {
+  let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php?url=" + baseUrl + "&phrase=" + phrase + "&limit=" + limit;
   // Default options are marked with *
   const response = await fetch(phpUrl, {
-    method: 'POST', // *GET, POST, PUT, DELETE, etc.
+    method: 'GET', // *GET, POST, PUT, DELETE, etc.
     mode: 'cors', // no-cors, *cors, same-origin
     cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
     credentials: 'same-origin', // include, *same-origin, omit
-    headers: {
-      'Content-Type': 'application/json'
-      // 'Content-Type': 'application/x-www-form-urlencoded',
-    },
     redirect: 'follow', // manual, *follow, error
-    referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-    body: JSON.stringify({
-      url: baseUrl,
-      phrase: phrase,
-      limit: limit
-    }) // body data type must match "Content-Type" header
+    referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
   });
-  //console.log(response.text());
-  //return response.text();
   return response.json();
-}
+}*/

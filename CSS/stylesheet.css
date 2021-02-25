@@ -162,19 +162,19 @@ button:hover {
 .result:last-child {
   margin-bottom: 1em;
 }
-.resultUrl {
+.url {
   position: relative;
   display: inline-block;
   text-decoration: none;
   color: grey;
 }
-.resultTitle {
+.title {
   position: relative;
   display: block;
   margin-bottom: 0.25em;
   font-size: 17px;
 }
-.resultSnippet {
+.snippet {
   font-size: 14px;
 }
 #noResults {
