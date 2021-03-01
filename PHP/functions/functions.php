@@ -88,9 +88,9 @@ function format_url(string $raw_url, bool $include_path = true) {
 function create_pdo($credentials) {
     $username = $credentials->username;
     $password = $credentials->password;
-    $serverIp = $credentials->server_ip;
+    $hostname = $credentials->hostname;
     $dbname = $credentials->database_name;
-    $dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
+    $dsn = "mysql:dbname=".$dbname.";host=".$hostname;
 
     // Create a new PDO instance
     try {

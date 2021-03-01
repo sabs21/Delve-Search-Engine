@@ -64,14 +64,16 @@ window.addEventListener("DOMContentLoaded", function() {
 
   // let preSearchSuggestions = document.getElementById("preSearchSuggestions"); // Suggestions that appear before a search in the dropdown.
 
+  const suggestionsElem = document.getElementById("suggestions");
   searchBar.addEventListener("keyup", (e) => {
     const searchDropdown = document.getElementById("searchDropdown");
     fetchSuggestions(searchBar.value, url, limit = 10)
     .then(data => {
       //console.log(data);
       populateDropdown(data.suggestions, data.url, (e) => {
-        let suggestion = e.target.value;
-        searchBar.value = e.target.value;
+        console.log(e);
+        let suggestion = e.target.innerText;
+        searchBar.value = suggestion;
         search(suggestion, url)
         .then(data => {
           suggestionsElem.className = ""; // Display suggestions element by removing the 'hidden' class.
@@ -82,7 +84,7 @@ window.addEventListener("DOMContentLoaded", function() {
 
           if (data.results?.length > 0) {
             // Populate the results container with results.
-            populate(data, results);
+            populateResults(data, results);
             pageBar.appendChild(createPageButtons(data));
             setCurrentPage(data.page);
             setTotalPages(data.totalPages);

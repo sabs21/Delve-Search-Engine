@@ -101,6 +101,10 @@ if (!is_null($base_url) && !empty($base_url)) {
     //curl_setopt($curl_session, CURLOPT_USERAGENT, $agent);
     curl_setopt($curl_session, CURLOPT_URL, $url);
     $html = curl_exec($curl_session);
+    // In case there are broken pages on the website, skip those pages and move on.
+    if ($html !== null) {
+      continue;
+    }
     $dom = new DOMDocument(); // Create a new DOMDocument object which will be used for parsing through the html
     @ $dom->loadHTML($html); // @ surpresses any warnings
 
@@ -185,30 +189,6 @@ curl_close($curl_session);
 $raw_credentials = file_get_contents("../credentials.json");
 $credentials = json_decode($raw_credentials);
 $pdo = create_pdo($credentials);
-
-/*$username = $creds->username;
-$password = $creds->password;
-$serverIp = $creds->server_ip;
-$dbname = $creds->database_name;
-$dsn = "mysql:dbname=".$dbname.";host=".$serverIp;
-
-// Create a PDO object to prevent against SQL injection attacks
-try {
-  if ($response['got_sitemap'] !== true) {
-    throw new Exception("Failed to retrieve sitemap. Can't create PDO instance.");
-  }
-  else if ($response['got_pages'] !== true) {
-    throw new Exception("Failed to retrieve pages. Can't create PDO instance.");
-  }
-
-  $pdo = new PDO($dsn, $username, $password);
-  $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); // Errors placed in "S:\Program Files (x86)\XAMPP\apache\logs\error.log"
-} catch (PDOException $e) {
-  //echo 'Connection failed: ' . $e->getMessage();
-  $response['pdo_error'] = 'Connection failed: ' . $e->getMessage();
-} catch(Exception $e) {
-  $response['pdo_error'] = $e->getMessage();
-}*/
 
 try {
   if (!isset($pdo)) {

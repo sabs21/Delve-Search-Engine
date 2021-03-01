@@ -71,7 +71,7 @@ if ($is_defined_get_request) {
     //array_filter($_GET, 'trim_value'); // the data in $_GET is trimmed
     $phrase = str_to_phrase($phrase); // Turn the string into a Phrase object
     $url = format_url($url); // Format the url which was recieved so that it does not end in '/'
-    $page_to_return = $page_to_return - 1; // This value will be used as an array index, so we subtract 1.
+    $page_to_return = $page_to_return - 1; // This value will be used as an array index.
     
     $response['filtered_symbols'] = $filter_symbols;
     $response['phrase'] = $phrase;
@@ -222,7 +222,7 @@ try {
     $response['totalPages'] = ceil(count($search_results) / 10);
     $result_pages = array_chunk($search_results, 10);
     if (isset($result_pages[0])) {
-        $response['results'] = $result_pages[0];
+        $response['results'] = $result_pages[$page_to_return];
     }
 } 
 catch (Exception $e) {
