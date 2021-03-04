@@ -9,7 +9,7 @@
 
 // Begin timer
 $begin = round(microtime(true) * 1000);
-set_time_limit(120);
+set_time_limit(240);
 
 // Override PHP.ini so that errors do not display on browser.
 ini_set('display_errors', 0);
@@ -42,7 +42,8 @@ $response = [
   'found_site_id' => false,
   'inserted_into_pages' => false,
   'inserted_into_keywords' => false,
-  'inserted_into_contents' => false,
+  'inserted_into_paragraphs' => false,
+  'inserted_into_headers' => false,
   'curl_error' => NULL,
   'pdo_error' => NULL,
   'db_error' => NULL,
@@ -99,10 +100,10 @@ if (!is_null($base_url) && !empty($base_url)) {
     //$curl_session = curl_init();
     //curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, true); // Prevent curl_exec from echoing output.
     //curl_setopt($curl_session, CURLOPT_USERAGENT, $agent);
-    curl_setopt($curl_session, CURLOPT_URL, $url);
+    curl_setopt($curl_session, CURLOPT_URL, str_replace(" ", "%20", $url));
     $html = curl_exec($curl_session);
     // In case there are broken pages on the website, skip those pages and move on.
-    if ($html !== null) {
+    if ($html === null) {
       continue;
     }
     $dom = new DOMDocument(); // Create a new DOMDocument object which will be used for parsing through the html
@@ -110,9 +111,13 @@ if (!is_null($base_url) && !empty($base_url)) {
 
     // Remove the header and the footer since their contents will just bloat the database.
     $header = $dom->getElementById('hcontainer');
-    $header->parentNode->removeChild($header);
+    if ($header !== null) {
+        $header->parentNode->removeChild($header);
+    }
     $footer = $dom->getElementById('fcontainer');
-    $footer->parentNode->removeChild($footer);
+    if ($footer !== null) {
+        $footer->parentNode->removeChild($footer);
+    }
 
     // Grab all headers to be used in finding all keywords
     /*$title_keywords = get_keywords_from_tag($dom, 'title');
@@ -124,20 +129,17 @@ if (!is_null($base_url) && !empty($base_url)) {
     // Grab all content to extract all keywords
     $keywords = get_keywords_from_all($dom);
     //$response['misc'] = get_all_content($dom);
-    $page_content = get_all_content($dom);
-    $page->set_content($page_content);
+    //$page_content = get_all_content($dom);
+    //$page->set_content($page_content);
 
     // Ignore the homepage
     if ($index !== 0) {
       $main_content = get_main_content($dom->getElementById('dm_content'));
-      $headers = get_all_headers($main_content);//get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-      if (isset($headers[0])) {
-        //if ($headers[0]->nodeType === XML_ELEMENT_NODE) {
-          $response['misc'] = ['header' => $headers[0]->get_text(), 'paragraph' => $headers[0]->get_paragraph()];
-        //}
-      }
+      //$headers = get_all_headers($main_content);//get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      $text_tags = get_all_content($dom, $main_content);
+      usort($text_tags, 'sort_by_line_num');
       
-      $page->set_headers($headers);
+      $page->set_headers($text_tags);
     }
    
     //echo print_r($keywords);
@@ -178,9 +180,10 @@ if (!is_null($base_url) && !empty($base_url)) {
     $response['got_pages'] = true;
   }
 }
+$response['all_pages'] = $pages;
 
 curl_close($curl_session);
-
+/*
 ///////////////////////////
 // INSERT INTO DATABASE //
 /////////////////////////
@@ -261,7 +264,7 @@ try {
   // Create a temporary table called keywords.
   // This table will be used to send keywords to different tables based on what letter they start with.
   // I.e., A keyword 'melon' will be sent to the keywords_m table.
-  $sql = 'CREATE TEMPORARY TABLE `duda_search_dirty`.`keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_total` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
+  $sql = 'CREATE TEMPORARY TABLE ' . $credentials->database_name . '.`keywords` ( `page_id` INT UNSIGNED NOT NULL , `site_id` INT UNSIGNED NOT NULL , `keyword` TINYTEXT NOT NULL , `dupe_total` TINYINT UNSIGNED NOT NULL ) ENGINE = InnoDB';
   $statement = $pdo->prepare($sql);
   $statement->execute();
   
@@ -415,7 +418,7 @@ try {
   if (isset($pdo) && $pdo->inTransaction()) {
     $pdo->rollBack();
   }
-}
+}*/
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);

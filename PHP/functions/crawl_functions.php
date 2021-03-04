@@ -42,7 +42,7 @@ function get_keywords_from_tag($dom, $tag) {
     // Use DOMXpath to grab content from each element with the data-element-type="paragraph" attribute.
     //$xpath = new DOMXpath($dom);
     //$content_blocks = $xpath->query("//*[contains(@data-element-type,'paragraph')]");
-    $content = get_all_content($dom);
+    $content = get_all_keywords($dom);
     $all_keywords = [];
   
     //foreach ($content_blocks as $block) {
@@ -79,7 +79,7 @@ function get_keywords_from_tag($dom, $tag) {
 // Output: String of content.
 // Return all content except for the footer/header.
 // Useful for obtaining all keywords.
-function get_all_content($dom) {
+function get_all_keywords($dom) {
     $content_wrapper = $dom->getElementById("site_content");
     // Get and format the text
     $content = $content_wrapper->textContent;
@@ -92,7 +92,7 @@ function get_all_content($dom) {
 // Find element containing the most text which is:
 // 1) As deep as possible in the DOM.
 // 2) Contains headers and paragraphs.
-function get_main_content($top) {
+/*function get_main_content($top) {
     $winner = $top;
     $children = null;
   
@@ -121,6 +121,44 @@ function get_main_content($top) {
         }
     }
     return $winner;
+}*/
+
+// Input: DomDocument Element
+// Output: Node
+// Find element containing the most text which is:
+// 1) As deep as possible in the DOM.
+// 2) Contains headers and paragraphs.
+function get_main_content($top) {
+    $winner = $top;
+    $children = null;
+  
+    // Start from the $top element. Scan each sibling to see which contains the most text and save it.
+    // When the winning element is found, save it and its level in the DOM, then move to its children and repeat.
+    while ($winner->hasChildNodes()) {
+        $children = $winner->childNodes;
+        $max = 0;
+        // This loop picks the element with the most text as the winner.
+        foreach($children as $element) {
+            // If this element is a text element, then we have found the deepest winner
+            if ($element->hasAttributes()) {
+                if (!is_null($element->attributes->getNamedItem("data-element-type"))) {
+                    $is_text_elem = $element->attributes->getNamedItem("data-element-type") == "paragraph";
+                    if ($is_text_elem) {
+                        // Return the winner found in the previous iteration.
+                        // NOTE: We can't simply call $winner since we could've overwritten it this iteration.
+                        return $element->parentNode;
+                    }
+                }  
+            }
+  
+            $length = strlen($element->textContent);
+            if ($max < $length) {
+                $max = $length;
+                $winner = $element;
+            }
+        }
+    }
+    return $top; // If no paragraph elements were found, this page likely relies on headers for text content.
 }
   
 // Input: DOMDocument Element
@@ -145,7 +183,7 @@ function get_each_tag_contents($element, $tags = ['p']) {
 // Input: DOMDocument Element
 // Output: Array of Header objects
 // Get all headers and their associated paragraphs.
-function get_all_headers($element) {
+/*function get_all_headers($element) {
     $tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
     $headers = [];
     // For each header tag, extract all text content.
@@ -192,6 +230,115 @@ function get_all_headers($element) {
         } 
     }
     return $headers;
+}*/
+
+// Input: DOMDocument
+//        DOMElement
+// Output: Array of Header objects
+// Get all headers and their associated paragraphs.
+function get_all_content($dom, $element) {
+    $tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div'];
+    $content = [];
+
+    foreach ($tags as $tag) {
+        $nodes = $element->getElementsByTagName($tag);
+        foreach ($nodes as $node) {
+            $text = str_replace(array("\r", "\n"), "", $node->textContent); // Remove line breaks, carriage returns, and trim around the text.
+            $text = trim(preg_replace("/[^\x20-\x7E]+/", " ", $text)); // Remove all non-printable characters.
+            $split_text_by_spaces = preg_split("/  +/", $text); // Places where there are long sequences of spaces get split into seperate strings.
+            $line_num = $node->getLineNo();
+            if (empty($text)) {
+                continue;
+            }
+
+            // Check to see if this element is a duda text widget or a duda custom widget.
+            $is_text_widget = false;
+            $is_custom_widget = false;
+            $has_element_type = false;
+            if ($node->hasAttributes()) { // Has attributes
+                $is_content_container = false;
+                if ($node->attributes->getNamedItem("id")) { // Has ID
+                    $is_content_container = $node->attributes->getNamedItem("id")->nodeValue == 'dm_content';
+                }
+                $has_element_type = $node->attributes->getNamedItem("data-element-type") != null;
+            }
+            if ($has_element_type) {
+                $is_text_widget = $node->attributes->getNamedItem("data-element-type")->nodeValue == "paragraph";
+                $is_custom_widget = $node->attributes->getNamedItem("data-element-type")->nodeValue == "custom_extension";
+            }
+            if ($is_text_widget || $is_custom_widget) { //($is_text_widget || $is_custom_widget) && $tag == 'div'
+                // Paragraphs and divs have a tendency to appear one after another in duda. To handle this, we detect when the text retrieved contains two or more paragraphs, then split the text accordingly.
+                $highest_tag = get_highest_tag_from_children($dom, $node); // Find any headers that may be within the div.
+                if ($tag == 'div' || $tag == 'p') {
+                    foreach ($split_text_by_spaces as $text_piece) {
+                        // Break up the text into its constituent pieces (aka, little paragraphs).
+                        $new_paragraph_regex = "/[^\s0-9]\.[^\s0-9]/";
+                        $matches = [];
+                        preg_match_all($new_paragraph_regex, $text_piece, $matches, PREG_OFFSET_CAPTURE); // PREG_OFFET_CAPTURE lets us get the indices of each match.
+                        $matches = $matches[0]; // Bypass an unnecessary layer of the array.
+
+                        // If we find a part of the text string that has a missing space after a sentence ends, that means we need to split the string in two from that point and treat both strings as seperate paragraphs.
+                        $index = 0;
+                        foreach ($matches as $match) {
+                            $match_index = ((int) $match[1]) + 2;
+                            if ($index === 0) {
+                                $paragraph = substr($text_piece, 0, $match_index);
+                            }
+                            else {
+                                $prev_match_index = $matches[$index-1][1] + 2;
+                                $paragraph = substr($text_piece, $prev_match_index, $match_index-$prev_match_index);
+                            }
+                            $content[] = new Header($paragraph, $highest_tag, $line_num);
+                            $index++;
+                        }
+
+                        if (count($matches) > 0) {
+                            $prev_match_index = $matches[$index-1][1] + 2;
+                            $paragraph = substr($text_piece, $prev_match_index);
+                            $content[] = new Header($paragraph, $highest_tag, $line_num);
+                        }
+                        else {
+                            $content[] = new Header($text_piece, $highest_tag, $line_num);
+                        }
+                    }
+                }
+                else {
+                    foreach ($split_text_by_spaces as $text_piece) {
+                        $content[] = new Header($text_piece, $highest_tag, $line_num);
+                    }
+                }
+            }
+        }
+    }
+    return $content;
+}
+
+// Input: Two Header or Paragraph objects
+// Output: Integer signifying whether A is less than, equal to, or greater than B
+// Compare Header/Paragraph A with Header/Paragraph B
+function sort_by_line_num($elemA, $elemB) {
+    $a = $elemA->get_line_num();
+    $b = $elemB->get_line_num();
+
+    if ($a === $b) {
+        return 0;
+    }
+    return ($a < $b) ? -1 : 1;
+}
+
+// Input: DOMNode
+// Output: The highest tag
+function get_highest_tag_from_children($dom, $node) {
+    $html = $dom->saveHTML($node);
+    //return $html;
+    $text_tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'];
+    $tag_regexps = ["/<h1/", "/<h2/", "/<h3/", "/<h4/", "/<h5/", "/<h6/", "/<p/"];
+    foreach ($tag_regexps as $tag_index => $regexp) {
+        if (preg_match($regexp, $html)) {
+            return $text_tags[$tag_index];
+        }
+    }
+    return 'div';
 }
 
 // Input: Any array

@@ -126,7 +126,7 @@ const displayLastSearch = (searchPhrase) => {
 
 // Input: Data from backend
 // Output: Array of suggestions (Strings)
-const populateSuggestions = (suggestions, url) => {
+/*const populateSuggestions = (suggestions, url) => {
   const otherSuggestions = document.getElementById("otherSuggestions");
   otherSuggestions.innerHTML = "";
   suggestions.forEach(item => {
@@ -172,7 +172,7 @@ const createSuggestionBadge = (suggestion, url) => {
     });
   });
   return badge;
-}
+}*/
 
 // Input: Object holding result metadata.
 // Output: Result element.
@@ -252,7 +252,7 @@ const boldSearchTerms = (str, terms) => {
 // Input: searchData (what was obtained from the backend)
 // Output: The contents of the pageBar element
 // Create the page buttons to sift through results.
-const createPageButtons = (searchData) => {
+/*const createPageButtons = (searchData) => {
   // This is needed for creating the page turn event listeners
   const resultsElem = document.getElementById("results");
   //const searchPhrase = document.getElementById("searchBar").value;
@@ -291,7 +291,7 @@ const createPageButtons = (searchData) => {
 
   pageButtons.className = "pageButtons";
   return pageButtons;
-}
+}*/
 
 // Input: res is what was obtained from the backend.
 //        container is the results container
@@ -347,7 +347,7 @@ const setTotalPages = (totalPages) => {
 // Input: (Array) Suggestions array retrieved from suggestions.php
 // Output: None.
 // Populate the suggestions dropdown with suggestions from the backend.
-const populateDropdown = (suggestions, url, onClick = null) => {
+/*const populateDropdown = (suggestions, url, onClick = null) => {
   const searchBar = document.getElementById("searchBar");
   const suggestionsElem = document.getElementById("suggestions");
   const phraseElem = document.getElementById("phrase");
@@ -362,7 +362,7 @@ const populateDropdown = (suggestions, url, onClick = null) => {
     }
     list.append(item);
   });
-} // Bad
+} // Bad*/
 
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes

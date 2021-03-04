@@ -6,8 +6,8 @@ let temppagenum = 1; // Governs which page to retrieve when submit is next click
 const createResult = (data = {url: null, title: null, snippet: null}, classes = {result: "result", link: "link", url: "url", title: "title", snippet: "snippet"}) => {
     let result = document.createElement("div");
     let link = document.createElement("a");
-    let url = document.createElement("h6");
-    let title = document.createElement("h4");
+    let url = document.createElement("span");
+    let title = document.createElement("h3");
     let snippet = document.createElement("p");
   
     // Format url portion of the result.
@@ -123,15 +123,27 @@ const populateResults = (data, container) => {
 // Output: None
 // Creates a search bar and adds it to the specified container.
 const createSearchBar = (container) => {
+  let barWrapper = document.createElement("span");
+  barWrapper.id = "barWrapper";
+  barWrapper.className = "barButtonAlignment";
   let bar = document.createElement("input");
   bar.id = "searchBar";
-  bar.className = "textInput";
+  bar.setAttribute("autocomplete", "off");
+  let dropdown = document.createElement("div");
+  dropdown.id = "searchDropdown";
+  let dropdownList = document.createElement("ul");
+  dropdownList.id = "predictionItems";
+
   let button = document.createElement("button");
   button.id = "searchSubmit";
-  button.className = "submit";
+  button.className = "barButtonAlignment";
   button.innerText = "Submit";
   
-  container.append(bar);
+  barWrapper.append(bar);
+  dropdown.append(dropdownList);
+  barWrapper.append(dropdown);
+
+  container.append(barWrapper);
   container.append(button);
 }
 
@@ -193,7 +205,7 @@ const createSuggestionButton = (suggestion, searchBarElem, submitElem) => {
 
 // Input: searchData (what was obtained from the backend)
 //        container to place all the suggestion buttons into
-//        search bar element for searching for suggestions
+//        search bar element for entering the chosen suggestion into the search bar
 //        submit element for searching for suggestions
 // Output: none.
 // Fill the given container with clickable suggestions.
@@ -204,6 +216,54 @@ const populateSuggestions = (searchData, container, searchBarElem, submitElem) =
     container.append(suggestionButton);
   });
 }
+
+// Input: searchData (what was obtained from the backend)
+//        container to place all the suggestion buttons into
+//        search bar element for entering the chosen suggestion into the search bar
+//        submit element for searching the chosen suggestion
+// Output: None.
+// Populate the suggestions dropdown with suggestions from the backend.
+const populateSuggestionDropdown = (searchData, container, searchBarElem, submitElem) => {
+  // Setup the container to act as a dropdown
+  container.className = "suggestionsDropdown";
+  searchBarHeight = window.getComputedStyle(searchBarElem).getPropertyValue('height');
+  container.style.top = searchBarHeight;
+
+  // Prepare the list of suggestions
+  let list = document.createElement("ul");
+  list.id = "dropdownSuggestions";
+  searchData.suggestions.forEach(data => {
+    let item = document.createElement("li");
+    item.innerText = data.suggestion.text;
+    item.className = "dropdownSuggestionItem";
+    item.addEventListener("click", (e) => {
+      console.log(e);
+      let suggestion = e.target.innerText;
+      searchBarElem.value = suggestion;
+      submitElem.click();
+    });
+    list.append(item);
+  });
+  container.append(list);
+
+  // When there are no suggestions to add to the dropdown, the drop shadow would still display and look bad.
+  // This check prevents the drop shadow from appearing when it shouldn't. 
+  if (searchData.suggestions.length > 0) {
+    container.className = "suggestionsDropdown dropdownDropShadow";
+  }
+
+  // Show/hide the dropdown when the searchbar is focused/unfocused
+  if (container.getAttribute("listened") !== true) {
+    searchBarElem.addEventListener("focus", (e) => {
+      container.classList.add("isFocused");
+    });
+    searchBarElem.addEventListener("blur", (e) => {
+      container.classList.remove("isFocused");
+    });
+    container.setAttribute("listened", true);
+    container.classList.add("isFocused");
+  }
+}
   
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
@@ -211,7 +271,8 @@ const populateSuggestions = (searchData, container, searchBarElem, submitElem) =
 // Output: Response in json format
 // Send the sitemap url to the php script that will fill the database accordingly
 async function crawl(urlToCrawl) {
-  let phpUrl = "https://www.devmrk.xyz/delve/crawl.php";
+  //let phpUrl = "https://www.devmrk.xyz/delve/crawl.php";
+  let phpUrl = "http://localhost/dudaSearch/PHP/crawl.php";
   if (urlToCrawl[urlToCrawl.length - 1] === '/') {
     urlToCrawl = urlToCrawl.substring(0, urlToCrawl.length - 1);
   }
@@ -232,8 +293,8 @@ async function crawl(urlToCrawl) {
     }) // body data type must match "Content-Type" header
   });
   //console.log(response.text());
-  return response.text();
-  //return response.json();
+  //return response.text();
+  return response.json();
 } // Good
 
 // Input: Phrase is the search phrase that the user types.
