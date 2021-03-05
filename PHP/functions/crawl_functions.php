@@ -245,7 +245,8 @@ function get_all_content($dom, $element) {
         $nodes = $element->getElementsByTagName($tag);
         foreach ($nodes as $node) {
             $text = str_replace(array("\r", "\n"), " ", $node->textContent); // Remove line breaks, carriage returns, and trim around the text.
-            $text = trim(preg_replace("/P{L}P{P}/", " ", $text)); // Remove all non-printable characters. // /[^\x20-\x7E]+/
+            $text = preg_replace("/[^\p{L}\p{P}\p{N}]/u", " ", $text); // Remove all non-printable characters. // /[^\x20-\x7E]+/
+            $text = trim(preg_replace("/  +/", " ", $text)); // Convert long sequences of spaces to a single space.
             $line_num = $node->getLineNo();
             if (empty($text)) {
                 continue;
@@ -269,7 +270,7 @@ function get_all_content($dom, $element) {
             if ($is_text_widget || $is_custom_widget) { //($is_text_widget || $is_custom_widget) && $tag == 'div'
                 // Fix any cases where two words are "glued" together. I.e., "asphaltTrailers" should be "asphalt Trailers"
                 // We must ensure that our keywords are actually useful since the content from the site will act as our dictionary.
-                $camelCaseRegex = "/[a-z:](?=[A-Z])/";
+                $camelCaseRegex = "/[a-z:;)](?=[A-Z])/";
                 $gluedWords = [];
                 preg_match_all($camelCaseRegex, $text, $gluedWords, PREG_OFFSET_CAPTURE); // PREG_OFFET_CAPTURE lets us get the indices of each match.
                 $gluedWords = $gluedWords[0]; // Bypass an unnecessary layer of the array.
@@ -279,55 +280,12 @@ function get_all_content($dom, $element) {
                     $offset++;
                 }
 
-                $split_text_by_spaces = preg_split("/   +/", $text); // Places where there are long sequences of spaces get split into seperate strings.
-
-                // Paragraphs and divs have a tendency to appear one after another in duda. To handle this, we detect when the text retrieved contains two or more paragraphs, then split the text accordingly.
                 $highest_tag = get_highest_tag_from_children($dom, $node); // Find any headers that may be within the div.
-                if ($tag == 'div' || $tag == 'p') {
-                    foreach ($split_text_by_spaces as $text_piece) {
-                        // Break up the text into its constituent pieces (aka, little paragraphs).
-                        $new_paragraph_regex = "/[^\s0-9]\.[^\s0-9\/,.!]/";
-                        $matches = [];
-                        preg_match_all($new_paragraph_regex, $text_piece, $matches, PREG_OFFSET_CAPTURE); // PREG_OFFET_CAPTURE lets us get the indices of each match.
-                        $matches = $matches[0]; // Bypass an unnecessary layer of the array.
-
-                        // If we find a part of the text string that has a missing space after a sentence ends, that means we need to split the string in two from that point and treat both strings as seperate paragraphs.
-                        $index = 0;
-                        foreach ($matches as $match) {
-                            $match_index = ((int) $match[1]) + 2;
-                            if ($index === 0) {
-                                $paragraph = substr($text_piece, 0, $match_index);
-                            }
-                            else {
-                                $prev_match_index = $matches[$index-1][1] + 2;
-                                $paragraph = substr($text_piece, $prev_match_index, $match_index-$prev_match_index);
-                            }
-
-                            if ($highest_tag == 'div' || $highest_tag == 'p') {
-                                $paragraphs[] = new Content($paragraph, $highest_tag, $line_num);
-                            }
-                            else {
-                                $headers[] = new Content($paragraph, $highest_tag, $line_num);
-                            }
-                            $index++;
-                        }
-
-                        if (count($matches) > 0) {
-                            $prev_match_index = $matches[$index-1][1] + 2;
-                            $text_piece = substr($text_piece, $prev_match_index);
-                        }
-                        if ($highest_tag == 'div' || $highest_tag == 'p') {
-                            $paragraphs[] = new Content($text_piece, $highest_tag, $line_num);
-                        }
-                        else {
-                            $headers[] = new Content($text_piece, $highest_tag, $line_num);
-                        }
-                    }
+                if ($highest_tag == 'div' || $highest_tag == 'p') {
+                    $paragraphs[] = new Content($text, $highest_tag, $line_num);
                 }
                 else {
-                    foreach ($split_text_by_spaces as $text_piece) {
-                        $headers[] = new Content($text_piece, $highest_tag, $line_num);
-                    }
+                    $headers[] = new Content($text, $highest_tag, $line_num);
                 }
             }
         }

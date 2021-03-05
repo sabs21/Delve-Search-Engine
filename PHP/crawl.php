@@ -186,7 +186,7 @@ if (!is_null($base_url) && !empty($base_url)) {
 $response['all_pages'] = $pages;
 
 curl_close($curl_session);
-/*
+
 ///////////////////////////
 // INSERT INTO DATABASE //
 /////////////////////////
@@ -307,21 +307,6 @@ try {
   // Indicate that the keywords were inserted into the database successfully
   $response['inserted_into_keywords'] = true;
 
-  // CONTENTS TABLE
-  // Inserts all new page content into the database.
-  //$pdo_str = create_pdo_placeholder_str(3, $totalPages); // Create the PDO string to use so that the correct amount of ?'s are added
-  //$sql = 'INSERT INTO contents (page_id, site_id, content) VALUES ' . $pdo_str;
-  //$statement = $pdo->prepare($sql);
-  //for ($i = 0, $j = 1; $i < $totalPages; $i++, $j = $j + 3) {
-  //  $statement->bindValue($j, $pages[$i]->get_id(), PDO::PARAM_INT);
-  //  $statement->bindValue($j+1, $site_id, PDO::PARAM_INT);
-  //  $statement->bindValue($j+2, $pages[$i]->get_content(), PDO::PARAM_LOB);
-  //}
-  //$statement->execute();
-
-  // Indicate that the contents of each page was inserted into the database successfully
-  //$response['inserted_into_contents'] = true;
-
   // HEADERS TABLE
   // Calculate total number of headers
   $total_headers = 0;
@@ -349,7 +334,7 @@ try {
         $statement->bindValue($pdo_entry+2, $header->get_tag(), PDO::PARAM_LOB);  // Tag
         $statement->bindValue($pdo_entry+3, $header->get_text(), PDO::PARAM_LOB); // Header
         $pdo_entry += 4;
-        $header->set_id(($pdo_entry / 4) - 1); // Set an ID for each header so that the header and the header's paragraph can get paired up in the database on the next sql call.
+        //$header->set_id(($pdo_entry / 4) - 1); // Set an ID for each header so that the header and the header's paragraph can get paired up in the database on the next sql call.
       }
     }
   }
@@ -370,40 +355,26 @@ try {
   // Figure out how many paragraphs there are
   $total_paragraphs = 0;
   foreach ($pages as $page) {
-    $headers = $page->get_headers();
-    if (!empty($headers)) {
-      foreach ($headers as $header) {
-        $has_paragraph = !is_null($header->get_paragraph());
-        if ($has_paragraph) {
-          $total_paragraphs++;
-        }
-      }
+    $paragraphs = $page->get_paragraphs();
+    if (!empty($paragraphs)) {
+      $total_paragraphs += count($paragraphs);
     }
   }
 
   // PARAGRAPHS TABLE
   // Inserts all paragraphs into the database.
-  $pdo_str = create_pdo_placeholder_str(4, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
+  $pdo_str = create_pdo_placeholder_str(3, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
   $sql = 'INSERT INTO paragraphs (page_id, site_id, paragraph) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
-  //$header_id = $first_header_id; // 
   $pdo_entry = 1;
   foreach ($pages as $page) {
-    $headers = $page->get_headers();
-    if (!empty($headers)) {
-      foreach ($headers as $header) {
-        $has_paragraph = !is_null($header->get_paragraph());
-        // Check if this header has a paragraph tied to it.
-        // If so, write it to the database.
-        if ($has_paragraph) {
-          $header_id = $first_header_id + $header->get_id(); // Calculate the database header id.
-          $statement->bindValue($pdo_entry, $header_id, PDO::PARAM_INT);                 // Header ID
-          $statement->bindValue($pdo_entry+1, $page->get_id(), PDO::PARAM_INT);          // Page ID
-          $statement->bindValue($pdo_entry+2, $site_id, PDO::PARAM_INT);                 // Site ID
-          $statement->bindValue($pdo_entry+3, $header->get_paragraph(), PDO::PARAM_LOB); // Paragraph
-          $pdo_entry += 4;
-          //$first_header_id++;
-        }
+    $paragraphs = $page->get_paragraphs();
+    if (!empty($paragraphs)) {
+      foreach ($paragraphs as $paragraph) {
+          $statement->bindValue($pdo_entry, $page->get_id(), PDO::PARAM_INT);          // Page ID
+          $statement->bindValue($pdo_entry+1, $site_id, PDO::PARAM_INT);                 // Site ID
+          $statement->bindValue($pdo_entry+2, $paragraph->get_text(), PDO::PARAM_LOB); // Paragraph
+          $pdo_entry += 3;
       }
     }
   }
@@ -421,7 +392,7 @@ try {
   if (isset($pdo) && $pdo->inTransaction()) {
     $pdo->rollBack();
   }
-}*/
+}
 
 // Monitor program performance using this timer
 $end = round(microtime(true) * 1000);
