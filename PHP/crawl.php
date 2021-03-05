@@ -137,9 +137,12 @@ if (!is_null($base_url) && !empty($base_url)) {
       $main_content = get_main_content($dom->getElementById('dm_content'));
       //$headers = get_all_headers($main_content);//get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
       $text_tags = get_all_content($dom, $main_content);
-      usort($text_tags, 'sort_by_line_num');
-      
-      $page->set_headers($text_tags);
+      //usort($text_tags, 'sort_by_line_num');
+      usort($text_tags['headers'], 'sort_by_line_num');
+      usort($text_tags['paragraphs'], 'sort_by_line_num');
+
+      $page->set_headers($text_tags['headers']);
+      $page->set_paragraphs($text_tags['paragraphs']);
     }
    
     //echo print_r($keywords);
@@ -381,7 +384,7 @@ try {
   // PARAGRAPHS TABLE
   // Inserts all paragraphs into the database.
   $pdo_str = create_pdo_placeholder_str(4, $total_paragraphs); // Create the PDO string to use so that the correct amount of ?'s are added
-  $sql = 'INSERT INTO paragraphs (header_id, page_id, site_id, paragraph) VALUES ' . $pdo_str;
+  $sql = 'INSERT INTO paragraphs (page_id, site_id, paragraph) VALUES ' . $pdo_str;
   $statement = $pdo->prepare($sql);
   //$header_id = $first_header_id; // 
   $pdo_entry = 1;

@@ -1,6 +1,6 @@
 <?php
 
-class Content {
+/*class Content {
     protected $content;
     protected $page_id;
   
@@ -24,7 +24,7 @@ class Content {
     public function set_page_id($new_id) {
       $this->page_id = $new_id;
     }
-  }
+  }*/
   
   class Page {
     protected $content;
@@ -33,7 +33,7 @@ class Content {
     public $path;
     protected $title;
     public $headers;
-    protected $paragraphs;
+    public $paragraphs;
     protected $desc;
   
     // $keywords is an array of objects.
@@ -126,7 +126,7 @@ class Content {
     }
   }
   
-  class Header {
+  class Content {
     //public $element;
     public $text;
     public $tag;
@@ -139,7 +139,7 @@ class Content {
       $this->text = $text;
       $this->tag = $tag;
       //$this->pos = null;
-      $this->paragraphs = [];
+      //$this->paragraphs = [];
       $this->line_num = $line_num; //$element->getLineNo();
     }
   
@@ -174,7 +174,7 @@ class Content {
     public function set_paragraph($new_paragraph) {
       $this->paragraph = $new_paragraph;
     }*/
-    public function get_paragraph($index) {
+    /*public function get_paragraph($index) {
       return $this->paragraphs[$index];
     }
     public function get_all_paragraphs() {
@@ -182,7 +182,7 @@ class Content {
     }
     public function add_paragraph($new_paragraph) {
       $this->paragraphs[] = $new_paragraph;
-    }
+    }*/
   }
 
   class Paragraph {
