@@ -286,7 +286,7 @@ function fetch_phrase_dupes(Phrase $phrase, PDO $pdo, int $site_id) {
     }
 
     // Obtain results based on the whole phrase
-    $sql = 'SELECT header_id, page_id, paragraph FROM paragraphs WHERE site_id = ? AND INSTR(paragraph, ?)';
+    $sql = 'SELECT page_id, paragraph FROM paragraphs WHERE site_id = ? AND INSTR(paragraph, ?)';
     $statement = $pdo->prepare($sql);
     $statement->execute([$site_id, $phrase->to_string()]);
     return $statement->fetchAll();
