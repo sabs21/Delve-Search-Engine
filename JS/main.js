@@ -58,18 +58,25 @@ window.addEventListener("DOMContentLoaded", function() {
   });
 
   // let preSearchSuggestions = document.getElementById("preSearchSuggestions"); // Suggestions that appear before a search in the dropdown.
-
+  const searchDropdown = document.getElementById("suggestionsDropdown");
+  let fetchTimeout;
   searchBar.addEventListener("keyup", (e) => {
-    const searchDropdown = document.getElementById("searchDropdown");
-    fetchSuggestions(searchBar.value, url, limit = 10)
-    .then(data => {
-      //console.log(data);
+    clearTimeout(fetchTimeout);
+    fetchTimeout = setTimeout(() => {
+      // Display a loading spinner
       searchDropdown.innerHTML = "";
-      populateSuggestionDropdown(data, searchDropdown, searchBar, searchButton); //(searchData, container, searchBarElem, submitElem)
-    })
-    .catch(err => {
-      console.log("ERROR: ", err);
-    });
+      displayLoadingAnimation(searchDropdown);
+
+      // Populate dropdown with suggestions
+      fetchSuggestions(searchBar.value, url, limit = 10)
+      .then(data => {
+        console.log(data);
+        populateSuggestionDropdown(data, searchDropdown, searchBar, searchButton); //(searchData, container, searchBarElem, submitElem)
+      })
+      .catch(err => {
+        console.log("ERROR: ", err);
+      });
+    }, 200);
   });
 
   // Show/hide the dropdown when the searchbar is focused/unfocused
@@ -80,11 +87,6 @@ window.addEventListener("DOMContentLoaded", function() {
     searchDropdown.classList.remove("isFocused");
   });
 });
-
-const displayLastSearch = (searchPhrase) => {
-  const searchedSuggestion = document.getElementById("searchedSuggestion");
-  searchedSuggestion.innerHTML = searchPhrase;
-}
 
 // Input: page is the page which the user should currently be on.
 // Output: None.

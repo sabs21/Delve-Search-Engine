@@ -224,6 +224,14 @@ const populateSuggestions = (searchData, container, searchBarElem, submitElem) =
 // Output: None.
 // Populate the suggestions dropdown with suggestions from the backend.
 const populateSuggestionDropdown = (searchData, container, searchBarElem, submitElem) => {
+  // If the phrase received by the backend doesnt match the current search bar input, return.
+  if (searchData.phrase.text !== searchBarElem.value) {
+    return;
+  }
+
+  // Clear out any HTML within the dropdown container
+  container.innerHTML = "";
+
   // Setup the container to act as a dropdown
   container.className = "suggestionsDropdown";
   searchBarHeight = window.getComputedStyle(searchBarElem).getPropertyValue('height');
@@ -264,6 +272,19 @@ const populateSuggestionDropdown = (searchData, container, searchBarElem, submit
     container.classList.add("isFocused");
   }
 }
+
+const displayLoadingAnimation = (container) => {
+  container.innerHTML = `<div id="circularG">
+	<div id="circularG_1" class="circularG"></div>
+	<div id="circularG_2" class="circularG"></div>
+	<div id="circularG_3" class="circularG"></div>
+	<div id="circularG_4" class="circularG"></div>
+	<div id="circularG_5" class="circularG"></div>
+	<div id="circularG_6" class="circularG"></div>
+	<div id="circularG_7" class="circularG"></div>
+	<div id="circularG_8" class="circularG"></div>
+</div>`;
+}
   
 // Input: phpUrl is the url that links to the php script that will crawl the sitemap
 //        data holds info to be used by the php script. Such info includes
@@ -303,31 +324,32 @@ async function crawl(urlToCrawl) {
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
 async function search(phrase, baseUrl, options = null) {
-if (options === null) {
-  options = { page: temppagenum, filterSymbols: true };
-}
-else {
-  if (options.page === null) {
-    options.page = temppagenum;
+  if (options === null) {
+    options = { page: temppagenum, filterSymbols: true };
   }
-  if (options.filterSymbols === null) {
-    options.filterSymbols = true;
+  else {
+    if (options.page === null) {
+      options.page = temppagenum;
+    }
+    if (options.filterSymbols === null) {
+      options.filterSymbols = true;
+    }
   }
-}
 
-let phpUrl = "https://www.devmrk.xyz/delve/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + options.page + "&filter_symbols=" + options.filterSymbols;
-temppagenum = 1; // Reset the global variable that governs which page to retrieve when submit is next clicked. 
+  //let phpUrl = "https://www.devmrk.xyz/delve/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + options.page + "&filter_symbols=" + options.filterSymbols;
+  let phpUrl = "http://localhost/dudaSearch/PHP/search.php?url=" + baseUrl + "&phrase=" + phrase + "&page=" + options.page + "&filter_symbols=" + options.filterSymbols;
+  temppagenum = 1; // Reset the global variable that governs which page to retrieve when submit is next clicked. 
 
-// Default options are marked with *
-const response = await fetch(phpUrl, {
-  method: "GET", // *GET, POST, PUT, DELETE, etc.
-  mode: 'cors', // no-cors, *cors, same-origin
-  cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
-  credentials: 'same-origin', // include, *same-origin, omit
-  redirect: 'follow', // manual, *follow, error
-  referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-});
-return response.json();
+  // Default options are marked with *
+  const response = await fetch(phpUrl, {
+    method: "GET", // *GET, POST, PUT, DELETE, etc.
+    mode: 'cors', // no-cors, *cors, same-origin
+    cache: 'no-cache', // *default, no-cache, reload, force-cache, only-if-cached
+    credentials: 'same-origin', // include, *same-origin, omit
+    redirect: 'follow', // manual, *follow, error
+    referrerPolicy: 'no-referrer' // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+  });
+  return response.json();
 }
 
 // Input: (String) Phrase is the search phrase that the user has typed.
@@ -336,7 +358,8 @@ return response.json();
 // Output: Response in json format.
 // Search the database for all pages related to your search phrase.
 async function fetchSuggestions(phrase, baseUrl, limit = 10) {
-  let phpUrl = "https://www.devmrk.xyz/delve/suggestions.php?url=" + baseUrl + "&phrase=" + phrase + "&limit=" + limit;
+  //let phpUrl = "https://www.devmrk.xyz/delve/suggestions.php?url=" + baseUrl + "&phrase=" + phrase + "&limit=" + limit;
+  let phpUrl = "http://localhost/dudaSearch/PHP/suggestions.php?url=" + baseUrl + "&phrase=" + phrase + "&limit=" + limit;
   // Default options are marked with *
   const response = await fetch(phpUrl, {
       method: 'GET', // *GET, POST, PUT, DELETE, etc.

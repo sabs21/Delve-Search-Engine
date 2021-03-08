@@ -236,12 +236,14 @@ catch (Exception $e) {
 if ($save_search && $page_to_return === 0) { // Only store searches that land on the first page.
     try {
         $pdo->beginTransaction();
+        $response['tried_adding_search'] = false;
         $sql = 'INSERT INTO searches (site_id, search_phrase) VALUES (?, ?)';
         $statement = $pdo->prepare($sql);
         $statement->bindValue(1, $site_id, PDO::PARAM_INT);
         $statement->bindValue(2, $phrase->to_string(), PDO::PARAM_STR);
         $statement->execute();
         $pdo->commit();
+        $response['tried_adding_search'] = true;
     }
     catch (Exception $e) {
         // One of our database queries have failed.
