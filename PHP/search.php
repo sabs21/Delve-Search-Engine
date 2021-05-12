@@ -13,19 +13,18 @@
 $begin = round(microtime(true) * 1000);
 set_time_limit(120);
 
-// Override PHP.ini so that errors do not display on browser.
-error_reporting(E_ALL);
+// Override PHP.ini so that errors display in logs.
 ini_set('display_errors', 1);
-//ini_set('display_errors', 0);
+error_reporting(E_ALL);
 
 // Import necessary classes.
 define('__ROOT__', dirname(dirname(__FILE__)));
-require_once(__ROOT__.'\\PHP\\classes\\classes.php');
-require_once(__ROOT__.'\\PHP\\classes\\search_classes.php');
+require_once(__ROOT__.'/delve/classes/classes.php');
+require_once(__ROOT__.'/delve/classes/search_classes.php');
 
 // Import necessary functions.
-require_once(__ROOT__.'\\PHP\\functions\\functions.php');
-require_once(__ROOT__.'\\PHP\\functions\\search_functions.php');
+require_once(__ROOT__.'/delve/functions/functions.php');
+require_once(__ROOT__.'/delve/functions/search_functions.php');
 
 /////////////////////
 // INITIALIZATION //
@@ -55,8 +54,12 @@ $page_to_return = null;
 $site_id = null;
 $filter_symbols = null;
 $is_defined_get_request = isset($_GET) && isset($_GET['phrase']) && isset($_GET['url']) && isset($_GET['page']) && isset($_GET['filter_symbols']) && !empty($_GET);
+//$is_defined_get_request = isset($_GET) && isset($_GET['phrase']) && isset($_GET['url']) && isset($_GET['page']) && isset($_GET['filter_symbols']) && isset($_GET['redirect_to']) && !empty($_GET);
 
 if ($is_defined_get_request) {
+    /*if ($_GET["redirect_to"] !== false) {
+        header("Location: " . $_GET['redirect_to']); // When the user needs to redirect the user before showing search results, this header will be applied to the response.
+    }*/
     $filter_symbols = filter_var(trim($_GET['filter_symbols']), FILTER_VALIDATE_BOOLEAN);
     // Trim and filter/sanitize the $_GET string data before formatting.
     if (!$filter_symbols) {
@@ -84,7 +87,7 @@ if ($is_defined_get_request) {
 ///////////////////////////////
 
 // Get credentials for database
-$raw_credentials = file_get_contents("../credentials.json");
+$raw_credentials = file_get_contents("../../credentials.json");
 $credentials = json_decode($raw_credentials);
 $pdo = create_pdo($credentials);
 
@@ -205,8 +208,14 @@ try {
             // Ensure that this result contains a snippet.
             $snippets = $search_results[$page['page_id']]->get_all_snippets();
             if (empty($snippets) || $snippet === NULL) {
-                // If no snippet was made already, just use the page description as the snippet.
-                $search_results[$page['page_id']]->add_snippet($page['description'], false);
+                if (isset($page['description']) && $page['description'] !== "") {
+                    // If no snippet was made already, just use the page description as the snippet.
+                    $search_results[$page['page_id']]->add_snippet($page['description'], false);
+                }
+                else {
+                    // If all else fails, display a placeholder snippet text.
+                    $search_results[$page['page_id']]->add_snippet("No description available.", false);
+                }
             }
             $urlNoPath = format_url($url, false);
             $search_results[$page['page_id']]->set_url($urlNoPath . $page['path']);

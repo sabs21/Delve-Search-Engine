@@ -9,18 +9,19 @@
 
 // Begin timer
 $begin = round(microtime(true) * 1000);
-set_time_limit(240);
+set_time_limit(120);
 
-// Override PHP.ini so that errors do not display on browser.
-ini_set('display_errors', 0);
+// Override PHP.ini so that errors display in logs.
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
 // Import necessary classes.
 define('__ROOT__', dirname(dirname(__FILE__)));
-require_once(__ROOT__.'\\PHP\\classes\\crawl_classes.php');
+require_once(__ROOT__.'/delve/classes/crawl_classes.php');
 
 // Import necessary functions.
-require_once(__ROOT__.'\\PHP\\functions\\functions.php');
-require_once(__ROOT__.'\\PHP\\functions\\crawl_functions.php');
+require_once(__ROOT__.'/delve/functions/functions.php');
+require_once(__ROOT__.'/delve/functions/crawl_functions.php');
 
 /////////////////////
 // INITIALIZATION //
@@ -58,10 +59,20 @@ curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, true); // Prevent curl_exec f
 curl_setopt($curl_session, CURLOPT_USERAGENT, $agent);
 $xml_data = curl_exec($curl_session);
 
-$data_arr = explode("<loc>", $xml_data);
+//$data_arr = explode("<loc>", $xml_data);
+$sitemap_dom = new DOMDocument();
+libxml_use_internal_errors(true); // fix html5/svg errors
+$sitemap_dom->loadHTML($xml_data);
+$sitemap_dom = $sitemap_dom->getElementsByTagName('loc');
+
+foreach($sitemap_dom as $url) {
+    $urls[] = $url->nodeValue;
+}
+
+//$response['urls'] = $urls;
 
 // Verify the success (or failure) of grabbing urls from the sitemap
-if (gettype($data_arr) === 'array' && count($data_arr) > 0) {
+if (gettype($urls) === 'array' && count($urls) > 0) {
   $response['got_sitemap'] = true;
   //echo print_r($data_arr);
 }
@@ -71,14 +82,6 @@ else if (curl_errno($curl_session)) {
 }
 else {
   $response['curl_error'] = 'Cannot retrieve sitemap. Check the url or your connection.';
-}
-
-// Get all sitemap url's and put them into array.
-// For some reason the 0'th index of $dataArr is blank, so I started $i at 1.
-for ($i = 1; $i < count($data_arr); $i++) {
-    $url_end_pos = strpos($data_arr[$i], "<") - 1;
-    $url = substr($data_arr[$i], 0, $url_end_pos + 1);
-    $urls[$i-1] = $url;
 }
 
 //////////////////////////////////
@@ -95,13 +98,10 @@ if (!is_null($base_url) && !empty($base_url)) {
     // Create a Page object and build it up each iteration.
     $path = str_replace($base_url, '/', $url);
     $page = new Page($path);
-  //for ($i = 0; $i < 3; $i++) {
-    // Begin cURL session
-    //$curl_session = curl_init();
-    //curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, true); // Prevent curl_exec from echoing output.
-    //curl_setopt($curl_session, CURLOPT_USERAGENT, $agent);
+
     curl_setopt($curl_session, CURLOPT_URL, str_replace(" ", "%20", $url));
     $html = curl_exec($curl_session);
+
     // In case there are broken pages on the website, skip those pages and move on.
     if ($html === null) {
       continue;
@@ -119,36 +119,20 @@ if (!is_null($base_url) && !empty($base_url)) {
         $footer->parentNode->removeChild($footer);
     }
 
-    // Grab all headers to be used in finding all keywords
-    /*$title_keywords = get_keywords_from_tag($dom, 'title');
-    $h1_keywords = get_keywords_from_tag($dom, 'h1');
-    $h2_keywords = get_keywords_from_tag($dom, 'h2');
-    $h3_keywords = get_keywords_from_tag($dom, 'h3');
-    $h4_keywords = get_keywords_from_tag($dom, 'h4');*/
-
     // Grab all content to extract all keywords
     $keywords = get_keywords_from_all($dom);
-    //$response['misc'] = get_all_content($dom);
-    //$page_content = get_all_content($dom);
-    //$page->set_content($page_content);
 
     // Ignore the homepage
     if ($index !== 0) {
       $main_content = get_main_content($dom->getElementById('dm_content'));
-      //$headers = get_all_headers($main_content);//get_each_tag_contents($main_content, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
       $text_tags = get_all_content($dom, $main_content);
-      //usort($text_tags, 'sort_by_line_num');
       usort($text_tags['headers'], 'sort_by_line_num');
       usort($text_tags['paragraphs'], 'sort_by_line_num');
-
       $page->set_headers($text_tags['headers']);
       $page->set_paragraphs($text_tags['paragraphs']);
     }
-   
-    //echo print_r($keywords);
     
     // Shove all keywords into an array, format each entry, and remove/monitor duplicate keywords.
-    //$keywords = array_merge($title_keywords, $h1_keywords, $h2_keywords, $h3_keywords, $h4_keywords);
     $keywords = remove_empty_entries($keywords);
     sort($keywords, SORT_STRING);
     $keywords = array_unique_monitor_dupes($keywords);
@@ -166,12 +150,7 @@ if (!is_null($base_url) && !empty($base_url)) {
     // Grab the meta description to store it in the page object.
     $desc = get_description($dom);
     $page->set_desc($desc);
-    //$tester = $dom->getElementsByTagName('meta');
-   // $response['misc'] = $tester->item(1)->textContent;
 
-    // Create a new instance of Page and add it to the pages array
-    //$path = str_replace($base_url, '/', $url);
-    //$page = new Page($path, $page_content, $keywords, $title, $desc); // changed $page_content to $main_content
     // Add the Page to the array
     $pages[] = $page;
   }
@@ -192,7 +171,7 @@ curl_close($curl_session);
 /////////////////////////
 
 // Get credentials for database
-$raw_credentials = file_get_contents("../credentials.json");
+$raw_credentials = file_get_contents("../../credentials.json");
 $credentials = json_decode($raw_credentials);
 $pdo = create_pdo($credentials);
 
@@ -386,7 +365,6 @@ try {
 } catch (Exception $e) {
   // One of our database queries have failed.
   // Print out the error message.
-  //echo $e->getMessage();
   $response['db_error'] = $e->getMessage();
   // Rollback the transaction.
   if (isset($pdo) && $pdo->inTransaction()) {

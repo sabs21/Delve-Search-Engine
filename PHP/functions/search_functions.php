@@ -87,6 +87,14 @@ function spell_check_phrase(Phrase $phrase, Dictionary $dictionary) {
 }
 
 function keyword_predictions(Keyword $keyword, Dictionary $dictionary) {
+    // Ensure that this keyword is not a connective.
+    $connectives = ['the', 'and', 'i', 'was', 'a', 'to', 'we', 'us', 'in', 'our', 'of', 'for', 'that', 'they', 'on', 'this', 'can', 'be', 'them'];
+    foreach ($connectives as $connective) {
+        if ($connective === $keyword->get_text()) {
+            return [];
+        }
+    }
+
     // Verify that the Dictionary contains the necessary Section. 
     $first_letter = $keyword->get_text()[0];
     $section = null;

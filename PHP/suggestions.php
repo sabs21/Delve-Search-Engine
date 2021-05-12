@@ -7,18 +7,17 @@
 $begin = round(microtime(true) * 1000);
 set_time_limit(120);
 
-// Override PHP.ini so that errors do not display on browser.
-error_reporting(E_ALL);
+// Override PHP.ini so that errors display in logs.
 ini_set('display_errors', 1);
-//ini_set('display_errors', 0);
+error_reporting(E_ALL);
 
 // Import necessary classes.
 define('__ROOT__', dirname(dirname(__FILE__)));
-require_once(__ROOT__.'\\PHP\\classes\\classes.php');
+require_once(__ROOT__.'/delve/classes/classes.php');
 
 // Import necessary functions.
-require_once(__ROOT__.'\\PHP\\functions\\functions.php');
-require_once(__ROOT__.'\\PHP\\functions\\suggestions_functions.php');
+require_once(__ROOT__.'/delve/functions/functions.php');
+require_once(__ROOT__.'/delve/functions/suggestions_functions.php');
 
 /////////////////////
 // INITIALIZATION //
@@ -60,7 +59,7 @@ if ($is_valid_get_request) {
 ///////////////////////////////
 
 // Get credentials for database
-$raw_credentials = file_get_contents("../credentials.json");
+$raw_credentials = file_get_contents("../../credentials.json");
 $credentials = json_decode($raw_credentials);
 $pdo = create_pdo($credentials);
 
